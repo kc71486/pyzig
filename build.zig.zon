@@ -1,0 +1,12 @@
+.{
+    .name = .dqn_offload,
+    .fingerprint = 0x3bc5680b3fdcad54,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .paths = .{
+        "include",
+        "lib",
+        "build.zig",
+        "build.zig.zon",
+    },
+}
