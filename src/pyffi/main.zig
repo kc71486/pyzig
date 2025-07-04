@@ -245,6 +245,8 @@ pub const TypeObject = extern struct {
 /// None object type. Basically an empty c.PyObject.
 pub const NoneObject = Object;
 pub extern var _Py_NoneStruct: c.PyObject;
+
+/// Reference to none object type, immutable, immortal.
 pub fn Py_None() *NoneObject {
     return @ptrCast(&_Py_NoneStruct);
 }
@@ -703,12 +705,23 @@ pub const ListObject = extern struct {
         if (comptime std.mem.eql(u8, @tagName(@typeInfo(T)), "pointer")) {
             @compileError(std.fmt.comptimePrint("T {} cannot be pointer", .{T}));
         }
-        const size: usize = @intCast(self.ob_base.ob_size);
+        const size: usize = self.getSize();
         const array: []*T = allocator.alloc(*T, size) catch
             return Err.outOfMemory();
         for (0..size) |idx| {
             const item_obj: *Object = self.getItem(idx) catch unreachable;
             array[idx] = try T.fromObject(item_obj);
+        }
+        return array;
+    }
+
+    /// Turns list into array of pointer of type Object.
+    pub fn toOwnedSliceObject(self: *ListObject, allocator: Allocator) MemoryError![]*Object {
+        const size: usize = self.getSize();
+        const array: []*Object = allocator.alloc(*Object, size) catch
+            return Err.outOfMemory();
+        for (0..size) |idx| {
+            array[idx] = self.getItem(idx) catch unreachable;
         }
         return array;
     }
@@ -798,11 +811,11 @@ pub const TupleObject = extern struct {
 
     /// Turns tuple into array.
     pub fn toOwnedSlice(self: *TupleObject, allocator: Allocator) Allocator.Error![]*Object {
-        const size: usize = @intCast(self.ob_base.ob_size);
+        const size: usize = self.getSize();
         const array: []*Object = allocator.alloc(*Object, size) catch
             return Err.outOfMemory();
         for (0..size) |idx| {
-            array[idx] = self.getItem(idx).?;
+            array[idx] = self.getItem(idx) catch unreachable;
         }
         return array;
     }
@@ -1646,7 +1659,7 @@ pub fn ndarrayFromList(allocator: Allocator, list: *ListObject, T: type) ListCon
 
 fn ndarrayFromListAlloc(allocator: Allocator, list_obj: *ListObject, outarray: anytype) ListConversionError!void {
     const Child = @typeInfo(@TypeOf(outarray)).pointer.child;
-    const size: usize = @intCast(list_obj.ob_base.ob_size);
+    const size: usize = list_obj.getSize();
     assert(size == outarray.len);
     switch (@typeInfo(Child)) {
         .int => {
@@ -1680,7 +1693,7 @@ fn ndarrayFromListAlloc(allocator: Allocator, list_obj: *ListObject, outarray: a
 /// Asserts outarray.len == list_obj.getSize().
 pub fn ndarrayFromListFill(list_obj: *ListObject, outarray: anytype) ListConversionError!void {
     const Child = @typeInfo(@TypeOf(outarray)).pointer.child;
-    const size: usize = @intCast(list_obj.ob_base.ob_size);
+    const size: usize = list_obj.getSize();
     assert(size == outarray.len);
     switch (@typeInfo(Child)) {
         .int => {
