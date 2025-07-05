@@ -80,7 +80,8 @@ pub const VarObject = extern struct {
         };
     }
 
-    pub fn fromObject(object: *Object) *VarObject {
+    /// Only for function compatibilty. It never fails. Illegal behavior if the type is not VarObject.
+    pub fn fromObject(object: *Object) TypeError!*VarObject {
         // I dont know if there is a safer way to convert it.
         return @fieldParentPtr("ob_base", object);
     }
@@ -209,9 +210,11 @@ pub const TypeObject = extern struct {
         return @ptrCast(object);
     }
 
+    /// Only for function compatibilty. It never fails. Illegal behavior if the type is not TypeObject.
     pub fn fromObject(object: *Object) TypeError!*TypeObject {
         // I dont know if there is a safer way to convert it.
-        return @fieldParentPtr("ob_base", object);
+        const var_obj: *VarObject = @fieldParentPtr("ob_base", object);
+        return @fieldParentPtr("ob_base", var_obj);
     }
 
     pub fn toC(self: *TypeObject) *c.PyTypeObject {
