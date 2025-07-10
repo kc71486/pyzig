@@ -11,6 +11,7 @@
 //! * Base Object type
 //! * Type Object (object metadata)
 //! * Builtin types
+//! * Builtin functions
 //! * Python Error functions and types
 //! * Module creation / declarations
 //! * Member creation / declarations
@@ -18,6 +19,7 @@
 //! * Argument parsing and building
 //! * Memory management
 //! * Python Object wrapper
+//! * Module Method wrapper
 //! * Import / Call
 //! * Misc helper
 //! * Zig error set
@@ -250,8 +252,13 @@ pub const NoneObject = Object;
 pub extern var _Py_NoneStruct: c.PyObject;
 
 /// Reference to none object type, immutable, immortal.
-pub fn Py_None() *NoneObject {
+pub fn None() *NoneObject {
     return @ptrCast(&_Py_NoneStruct);
+}
+
+/// Deprecated, use `None()` instead.
+pub fn Py_None() *NoneObject {
+    return None();
 }
 
 /// Integer object type, immutable, field ob_digit only means it takes at
@@ -894,6 +901,25 @@ pub const DictObject = extern struct {
 };
 
 // ========================================================================= //
+// Builtin functions
+
+pub const Builtin = struct {
+    pub fn print(obj: *Object) PrintError!void {
+        const result = c.PyObject_Print(obj.toC(), c.stdout, c.Py_PRINT_RAW);
+        if (result == -1) {
+            return PrintError.Print;
+        }
+    }
+
+    /// Equivilent to python's `type(obj)`, returns a pointer of type `*TypeObject`.
+    ///
+    /// Returns a new Reference.
+    pub fn Type(obj: *Object) TypeError!*Object {
+        return c.PyObject_Type(obj.toC()) orelse TypeError.SystemError;
+    }
+};
+
+// ========================================================================= //
 // Python Error functions and types
 
 /// Error helper functions
@@ -1091,7 +1117,7 @@ pub const PyMemberDef = extern struct {
 /// PyMethodDef with zig syntax. To use it, @ptrCast this into c.PyModuleDef.
 pub const PyMethodDef = extern struct {
     ml_name: ?[*:0]const u8,
-    ml_meth: PyCFunction,
+    ml_meth: ?PyCFunction,
     ml_flags: Flag,
     ml_doc: ?[*:0]const u8 = null,
 
@@ -1120,7 +1146,7 @@ pub const PyMethodDef = extern struct {
         .ml_doc = null,
     };
 };
-pub const PyCFunction = ?*const fn ([*c]c.PyObject, [*c]c.PyObject) callconv(.c) ?*c.PyObject;
+pub const PyCFunction = *const fn (*c.PyObject, *c.PyObject) callconv(.c) ?*c.PyObject;
 
 pub const PyGetSetDef = extern struct {
     name: ?[*:0]const u8,
@@ -1491,10 +1517,29 @@ pub const PyBuiltinExample = struct {
     };
     fn foo(self: *Self) !*Object {
         _ = self;
-        IncRef(Py_None());
-        return Py_None();
+        return None();
     }
 };
+
+// ========================================================================= //
+// Module Method wrapper
+
+/// inner_fn: fn method(args: tuple) !*PyObject;
+pub fn wrapPyCFunctionDefault(inner_fn: anytype) PyCFunction {
+    const params = @typeInfo(@TypeOf(inner_fn)).@"fn".params;
+    if (params.len != 1)
+        @compileError("expect inner_fn to have 1 parameter");
+    const ArgsType = params[0].type.?;
+    return struct {
+        pub fn method(module_c: *c.PyObject, args_c: *c.PyObject) callconv(.c) ?*c.PyObject {
+            _ = module_c;
+            const args_obj: *TupleObject = TupleObject.fromObject(.fromC(args_c)) catch return null;
+            const args: ArgsType = parseArgs(args_obj, ArgsType) catch return null;
+            const result: *Object = inner_fn(args) catch return null;
+            return result.toC();
+        }
+    }.method;
+}
 
 // ========================================================================= //
 // Import / Call
@@ -1787,7 +1832,7 @@ fn assertmessageZ(comptime ok: bool, comptime messagez: [*:0]const u8) void {
 /// Generic memory related error.
 pub const MemoryError = error{PyAlloc} || Allocator.Error;
 /// Python type casting error.
-pub const TypeError = error{ PyType, NullObject };
+pub const TypeError = error{ PyType, NullObject, SystemError };
 /// Python attribute related error
 pub const AttributeError = error{Attribute};
 /// Any error that python call() returns
@@ -1818,6 +1863,8 @@ pub const NoError = error{};
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
+/// Print Error
+pub const PrintError = error{Print};
 
 // ========================================================================= //
 //
