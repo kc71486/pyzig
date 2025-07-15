@@ -1870,10 +1870,7 @@ pub const PrintError = error{Print};
 //
 
 /// Leftover python declaration.
-pub const c = @cImport({
-    @cDefine("PY_SSIZE_T_CLEAN", {});
-    @cInclude("python.h");
-});
+pub const c = @import("c");
 
 // ========================================================================= //
 // Imports
