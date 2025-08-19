@@ -853,7 +853,7 @@ pub const DictObject = extern struct {
         values: ?*[1]c.PyObject,
     };
 
-    /// Make the object a tuple if possible, otherwise set exception and return error.
+    /// Make the object a dict if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*DictObject {
         if (isDict(object)) {
             return fromObjectFast(object);
@@ -863,19 +863,33 @@ pub const DictObject = extern struct {
         }
     }
 
+    /// Make the object a dict if it is a dict, otherwise set exception and return error.
+    pub fn fromObjectExact(object: *Object) TypeError!*DictObject {
+        if (isDictExact(object)) {
+            return fromObjectFast(object);
+        } else {
+            Err.setString(PyExc_TypeError, "not a dict");
+            return TypeError.PyType;
+        }
+    }
+
     /// Make the object a dict without checking.
-    pub fn fromObjectFast(object: *Object) *TupleObject {
+    pub fn fromObjectFast(object: *Object) *DictObject {
         return @fieldParentPtr("ob_base", object);
     }
 
     // no toC() because it is broken.
 
     pub fn toObject(self: *DictObject) *Object {
-        return &self.ob_item;
+        return &self.ob_base;
     }
 
     pub fn isDict(obj: *Object) bool {
         return c.PyDict_Check(obj.toC()) != 0;
+    }
+
+    pub fn isDictExact(obj: *Object) bool {
+        return c.PyDict_CheckExact(obj.toC()) != 0;
     }
 
     pub fn setItem(self: *DictObject, key: *Object, value: *Object) TypeError!void {
@@ -889,7 +903,7 @@ pub const DictObject = extern struct {
     /// Get item by key, doesn't increment reference count. Return null if not
     /// found. Return DictError if keys cannot hash or compare equal.
     pub fn getItem(self: *DictObject, key: *Object) DictError!?*Object {
-        const item_opt: ?*c.PyObject = c.PyDict_GetItemWithError(self.toObject().toC(), key);
+        const item_opt: ?*c.PyObject = c.PyDict_GetItemWithError(self.toObject().toC(), key.toC());
         if (item_opt) |item| {
             return Object.fromC(item);
         } else if (Err.occurred() != null) {
