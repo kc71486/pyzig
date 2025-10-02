@@ -940,15 +940,15 @@ pub const Builtin = struct {
 pub const Err = struct {
     /// Set the error indicator. To raise exception, return special value from the caller.
     pub fn setString(exception: *c.PyObject, string: [*:0]const u8) void {
-        return c.PyErr_SetString(exception, string);
+        c.PyErr_SetString(exception, string);
     }
     /// Set the error indicator. To raise exception, return special value from the caller.
     pub fn setObject(exception: *c.PyObject, object: *c.PyObject) void {
-        return c.PyErr_SetObject(exception, object);
+        c.PyErr_SetObject(exception, object);
     }
     /// Clear the error indicator and print the traceback.
     pub fn print() void {
-        return c.PyErr_Print();
+        c.PyErr_Print();
     }
     /// Test whether the error indicator is set. If set, return the exception
     /// type. If not set, return null.
@@ -968,9 +968,14 @@ pub const Err = struct {
         return error.OutOfMemory;
     }
     /// Set the error indicator and return error.NullObject.
-    pub fn NoneError(string: [*:0]const u8) TypeError {
+    pub fn noneError(string: [*:0]const u8) TypeError {
         c.PyErr_SetString(PyExc_TypeError, string);
         return error.NullObject;
+    }
+    /// Set the error indicator and return error.CustomError
+    pub fn customError(string: [*:0]const u8) CustomError {
+        c.PyErr_SetString(PyExc_Exception, string);
+        return error.Custom;
     }
 };
 
@@ -1877,8 +1882,10 @@ pub const NoError = error{};
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
-/// Print Error
+/// Print error
 pub const PrintError = error{Print};
+/// Custom error generated from Err.customError()
+pub const CustomError = error{Custom};
 
 // ========================================================================= //
 //
