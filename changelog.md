@@ -12,6 +12,7 @@
 * add `wrapPyCFunctionDefault`.
 * add `fromObjectExact` and `isDictExact` in DictObject.
 * add `Err.customError([*:0]const u8)` and CustomError.
+* add `Interpreter` and `InterpreterError`.
 
 ### changes
 * change `@cimport` into `b.addTranslateC` and `c` module, make `py` module able to use debug build.

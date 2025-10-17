@@ -21,6 +21,7 @@
 //! * Python Object wrapper
 //! * Module Method wrapper
 //! * Import / Call
+//! * Direct interpreter interaction
 //! * Misc helper
 //! * Zig error set
 //! * Imports
@@ -1644,6 +1645,29 @@ pub fn callNew(T: type, type_obj: *TypeObject) MemoryTypeError!*T {
 }
 
 // ========================================================================= //
+// Direct interpreter interaction
+
+pub const Interpreter = struct {
+    /// Initialize the Python interpreter.
+    ///
+    /// It also initializes the sys.path, but not sys.argv.
+    pub fn initialize() void {
+        c.Py_Initialize();
+    }
+
+    /// Undo all initializations made by Py_Initialize() and subsequent use of Python/C API functions,
+    /// and destroy all sub-interpreters that were created and not yet destroyed since the last call to Py_Initialize().
+    ///
+    /// Return InterpreterError.Finalize if there were errors during finalization.
+    pub fn finalize() InterpreterError!void {
+        const retval: i32 = c.Py_FinalizeEx();
+        if (retval != 0) {
+            return InterpreterError.Finalize;
+        }
+    }
+};
+
+// ========================================================================= //
 // Misc helper
 
 /// Returns a new reference.
@@ -1882,8 +1906,10 @@ pub const NoError = error{};
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
-/// Print error
+/// Print error.
 pub const PrintError = error{Print};
+/// Interpreter error.
+pub const InterpreterError = error{Finalize};
 /// Custom error generated from Err.customError()
 pub const CustomError = error{Custom};
 
