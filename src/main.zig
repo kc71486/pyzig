@@ -1581,6 +1581,8 @@ pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Obj
     return Object.fromC(c_attr);
 }
 
+/// Equivilent to `callable(*args)`.
+///
 /// Returns a new reference.
 pub fn call(callable: *Object, args: anytype) CallError!*Object {
     const args_obj: *TupleObject = try TupleObject.fromTuple(args);
@@ -1588,6 +1590,8 @@ pub fn call(callable: *Object, args: anytype) CallError!*Object {
     return try callObject(callable, args_obj);
 }
 
+/// Equivilent to `callable()`.
+///
 /// Returns a new reference.
 pub fn callNoArgs(callable: *Object) CallError!*Object {
     const _args: *TupleObject = try TupleObject.new(0);
