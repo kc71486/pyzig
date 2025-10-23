@@ -914,16 +914,41 @@ pub const DictObject = extern struct {
             return null;
         }
     }
+
+    /// Get item by utf-8 encoded key, doesn't increment reference count. Return null if not
+    /// found. Return DictError if keys cannot hash or compare equal.
+    pub fn getItemString(self: *DictObject, key: [*:0]const u8) DictError!?*Object {
+        const key_obj: *UnicodeObject = .fromString(key);
+        return try self.getItem(key_obj.toObject());
+    }
 };
 
 // ========================================================================= //
 // Builtin functions
 
 pub const Builtin = struct {
-    pub fn print(obj: *Object) PrintError!void {
+    pub fn builtins() *DictObject {
+        const builtin_obj: *Object = .fromC(c.PyEval_GetBuiltins());
+        return DictObject.fromObject(builtin_obj) catch unreachable;
+    }
+
+    pub fn locals() *Object {
+        return Object.fromC(c.PyEval_GetLocals());
+    }
+
+    pub fn globals() *Object {
+        return Object.fromC(c.PyEval_GetGlobals());
+    }
+
+    pub fn str(obj: *Object) BuiltinError!*Object {
+        const result: *c.PyObject = c.PyObject_Str(obj.toC()) orelse return BuiltinError.Str;
+        return Object.fromC(result);
+    }
+
+    pub fn print(obj: *Object) BuiltinError!void {
         const result = c.PyObject_Print(obj.toC(), c.stdout, c.Py_PRINT_RAW);
         if (result == -1) {
-            return PrintError.Print;
+            return BuiltinError.Print;
         }
     }
 
@@ -1911,8 +1936,8 @@ pub const NoError = error{};
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
-/// Print error.
-pub const PrintError = error{Print};
+/// Builtin error.
+pub const BuiltinError = error{ Str, Print };
 /// Interpreter error.
 pub const InterpreterError = error{Finalize};
 /// Custom error generated from Err.customError()

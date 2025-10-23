@@ -3,7 +3,9 @@
 ### breaking changes
 * Change `PyCFunction` definition `?*const fn ([*c]c.PyObject, [*c]c.PyObject) callconv(.c) ?*c.PyObject` ->
 `*const fn (*c.PyObject, *c.PyObject) callconv(.c) ?*c.PyObject`, PyMethodDef remain unchanged.
-* Change `Err.NoneError([*:0]const u8)` into `Err.noneError([*:0]const u8)`
+* Change `Err.NoneError([*:0]const u8)` into `Err.noneError([*:0]const u8)`.
+* Change `PrintError` into `BuiltinError`
+  * `PrintError.Print` -> `BuiltinError.Print`.
 
 ### deprecations
 * add `None()`, deprecate `Py_None()`
@@ -13,6 +15,7 @@
 * add `fromObjectExact` and `isDictExact` in DictObject.
 * add `Err.customError([*:0]const u8)` and CustomError.
 * add `Interpreter` and `InterpreterError`.
+* add more functions in `Builtin` namespace.
 
 ### changes
 * change `@cimport` into `b.addTranslateC` and `c` module, make `py` module able to use debug build.
