@@ -1,5 +1,11 @@
 ## 0.3.0
 
+### Err namespace reformation
+* Add `Standard` namespace, holding various standard exception.
+* Change all functions in Err namespace to accept and return `*Object` instead of `*c.pyObject`.
+* Remove all global `PyExc_*` declaration, move it into `Err.Standard` namespace and make it a function.
+* Add `displayException`, and fix `NewException`
+
 ### breaking changes
 * Change `PyCFunction` definition `?*const fn ([*c]c.PyObject, [*c]c.PyObject) callconv(.c) ?*c.PyObject` ->
 `*const fn (*c.PyObject, *c.PyObject) callconv(.c) ?*c.PyObject`, PyMethodDef remain unchanged.

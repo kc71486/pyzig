@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const optimize: std.builtin.OptimizeMode = b.standardOptimizeOption(.{});
     const optimize_release: std.builtin.OptimizeMode = if (optimize == .Debug) .ReleaseSafe else optimize;
 
-    // python ffi cimport module, requires relerase build.
+    // python ffi cimport module, requires release build.
     // debug build includes symbol that doesn't exist in python312.lib.
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/py_headers.c"),

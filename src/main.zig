@@ -279,7 +279,7 @@ pub const LongObject = extern struct {
         if (isLong(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not an int");
+            Err.setString(Err.Standard.TypeError(), "not an int");
             return TypeError.PyType;
         }
     }
@@ -353,7 +353,7 @@ pub const LongObject = extern struct {
             if (intvalue <= std.math.maxInt(T) and intvalue >= std.math.minInt(T)) {
                 return @intCast(intvalue);
             } else {
-                Err.setString(PyExc_OverflowError, "");
+                Err.setString(Err.Standard.OverflowError(), "");
                 return NumericError.Long;
             }
         } else {
@@ -381,7 +381,7 @@ pub const BoolObject = extern struct {
         if (isBool(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a bool");
+            Err.setString(Err.Standard.TypeError(), "not a bool");
             return TypeError.PyType;
         }
     }
@@ -395,7 +395,7 @@ pub const BoolObject = extern struct {
         if (isBool(long)) {
             return @fieldParentPtr("ob_base", long);
         } else {
-            Err.setString(PyExc_TypeError, "not a bool");
+            Err.setString(Err.Standard.TypeError(), "not a bool");
             return TypeError.PyType;
         }
     }
@@ -454,7 +454,7 @@ pub const FloatObject = extern struct {
         if (isFloat(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a float");
+            Err.setString(Err.Standard.TypeError(), "not a float");
             return TypeError.PyType;
         }
     }
@@ -500,7 +500,7 @@ pub const NumericObject = opaque {
         } else if (isLong(object)) {
             return @ptrCast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a float or int");
+            Err.setString(Err.Standard.TypeError(), "not a float or int");
             return TypeError.PyType;
         }
     }
@@ -567,7 +567,7 @@ pub const UnicodeObject = extern struct {
         if (isUnicode(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a str");
+            Err.setString(Err.Standard.TypeError(), "not a str");
             return TypeError.PyType;
         }
     }
@@ -608,7 +608,7 @@ pub const UnicodeObject = extern struct {
             return allocator.dupeZ(u8, str[0..@intCast(str_size)]) catch
                 return Err.outOfMemory();
         } else {
-            Err.setString(c.PyExc_UnicodeError, "");
+            Err.setString(Err.Standard.UnicodeError(), "");
             return UnicodeError.Unicode;
         }
     }
@@ -624,7 +624,7 @@ pub const ListObject = extern struct {
         if (isList(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a list");
+            Err.setString(Err.Standard.TypeError(), "not a list");
             return TypeError.PyType;
         }
     }
@@ -650,7 +650,7 @@ pub const ListObject = extern struct {
     /// Returns a new reference.
     pub fn new(len: usize) MemoryError!*ListObject {
         if (len > std.math.maxInt(isize)) {
-            Err.setString(PyExc_MemoryError, "len exceed max isize");
+            Err.setString(Err.Standard.MemoryError(), "len exceed max isize");
             return MemoryError.PyAlloc;
         }
         const obj_c: *c.PyObject = c.PyList_New(@intCast(len)) orelse return MemoryError.PyAlloc;
@@ -750,7 +750,7 @@ pub const TupleObject = extern struct {
         if (isTuple(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a tuple");
+            Err.setString(Err.Standard.TypeError(), "not a tuple");
             return TypeError.PyType;
         }
     }
@@ -775,7 +775,7 @@ pub const TupleObject = extern struct {
     /// Returns a new reference.
     pub fn new(len: usize) MemoryError!*TupleObject {
         if (len > std.math.maxInt(isize)) {
-            Err.setString(PyExc_MemoryError, "len exceed max isize");
+            Err.setString(Err.Standard.MemoryError(), "len exceed max isize");
             return MemoryError.PyAlloc;
         }
         const obj_c: *c.PyObject = c.PyTuple_New(@intCast(len)) orelse return MemoryError.PyAlloc;
@@ -860,7 +860,7 @@ pub const DictObject = extern struct {
         if (isDict(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a dict");
+            Err.setString(Err.Standard.TypeError(), "not a dict");
             return TypeError.PyType;
         }
     }
@@ -870,7 +870,7 @@ pub const DictObject = extern struct {
         if (isDictExact(object)) {
             return fromObjectFast(object);
         } else {
-            Err.setString(PyExc_TypeError, "not a dict");
+            Err.setString(Err.Standard.TypeError(), "not a dict");
             return TypeError.PyType;
         }
     }
@@ -965,58 +965,89 @@ pub const Builtin = struct {
 
 /// Error helper functions
 pub const Err = struct {
+    /// Standard exceptions object
+    pub const Standard = struct {
+        pub fn Exception() *Object {
+            return .fromC(c.PyExc_Exception);
+        }
+        pub fn AttributeError() *Object {
+            return .fromC(c.PyExc_AttributeError);
+        }
+        pub fn ImportError() *Object {
+            return .fromC(c.PyExc_ImportError);
+        }
+        pub fn IndexError() *Object {
+            return .fromC(c.PyExc_IndexError);
+        }
+        pub fn KeyError() *Object {
+            return .fromC(c.PyExc_KeyError);
+        }
+        pub fn MemoryError() *Object {
+            return .fromC(c.PyExc_MemoryError);
+        }
+        pub fn OSError() *Object {
+            return .fromC(c.PyExc_OSError);
+        }
+        pub fn OverflowError() *Object {
+            return .fromC(c.PyExc_OverflowError);
+        }
+        pub fn RuntimeError() *Object {
+            return .fromC(c.PyExc_RuntimeError);
+        }
+        pub fn TypeError() *Object {
+            return .fromC(c.PyExc_TypeError);
+        }
+        pub fn UnicodeError() *Object {
+            return .fromC(c.PyExc_UnicodeError);
+        }
+    };
     /// Set the error indicator. To raise exception, return special value from the caller.
-    pub fn setString(exception: *c.PyObject, string: [*:0]const u8) void {
-        c.PyErr_SetString(exception, string);
+    pub fn setString(exception: *Object, string: [*:0]const u8) void {
+        _ = occurred();
+        c.PyErr_SetString(exception.toC(), string);
     }
     /// Set the error indicator. To raise exception, return special value from the caller.
-    pub fn setObject(exception: *c.PyObject, object: *c.PyObject) void {
-        c.PyErr_SetObject(exception, object);
+    pub fn setObject(exception: *Object, object: *Object) void {
+        c.PyErr_SetObject(exception.toC(), object.toC());
     }
     /// Clear the error indicator and print the traceback.
     pub fn print() void {
         c.PyErr_Print();
     }
+    /// Print the traceback.
+    pub fn displayException(exception: *Object) void {
+        c.PyErr_DisplayException(exception.toC());
+    }
     /// Test whether the error indicator is set. If set, return the exception
     /// type. If not set, return null.
-    pub fn occurred() ?*c.PyObject {
-        return c.PyErr_Occurred() orelse return null;
+    pub fn occurred() ?*Object {
+        return .fromC(c.PyErr_Occurred() orelse return null);
     }
     /// Create custom exception object. The name argument must be the name of
     /// the new exception.
     ///
     /// Returns a new reference.
-    pub fn NewException(name: [*:0]const u8, base: ?*Object, dict: ?*Object) ?*Object {
-        return c.PyErr_NewException(name, base, dict) orelse return null;
+    pub fn NewException(name: [*:0]const u8, base_opt: ?*Object, dict_opt: ?*Object) ?*Object {
+        const base_c: ?*c.PyObject = if (base_opt) |base| base.toC() else null;
+        const dict_c: ?*c.PyObject = if (dict_opt) |dict| dict.toC() else null;
+        return .fromC(c.PyErr_NewException(name, base_c, dict_c) orelse return null);
     }
     /// Set the error indicator and return Allocator.Error.
     pub fn outOfMemory() Allocator.Error {
-        c.PyErr_SetString(PyExc_MemoryError, "Allocator Error");
+        setString(Standard.MemoryError(), "Allocator Error");
         return error.OutOfMemory;
     }
     /// Set the error indicator and return error.NullObject.
     pub fn noneError(string: [*:0]const u8) TypeError {
-        c.PyErr_SetString(PyExc_TypeError, string);
+        setString(Standard.TypeError(), string);
         return error.NullObject;
     }
     /// Set the error indicator and return error.CustomError
     pub fn customError(string: [*:0]const u8) CustomError {
-        c.PyErr_SetString(PyExc_Exception, string);
+        setString(Standard.Exception(), string);
         return error.Custom;
     }
 };
-
-// builtin error object
-pub extern var PyExc_Exception: *c.PyObject;
-pub extern var PyExc_ImportError: *c.PyObject;
-pub extern var PyExc_TypeError: *c.PyObject;
-pub extern var PyExc_AttributeError: *c.PyObject;
-pub extern var PyExc_RuntimeError: *c.PyObject;
-pub extern var PyExc_OSError: *c.PyObject;
-pub extern var PyExc_KeyError: *c.PyObject;
-pub extern var PyExc_IndexError: *c.PyObject;
-pub extern var PyExc_OverflowError: *c.PyObject;
-pub extern var PyExc_MemoryError: *c.PyObject;
 
 // ========================================================================= //
 // Module creation / declarations
@@ -1226,7 +1257,7 @@ pub fn parseArgs(args_tuple: *TupleObject, T: type) ArgsError!T {
     const args_len: usize = args_tuple.getSize();
     const fields = @typeInfo(T).@"struct".fields;
     if (args_len != fields.len) {
-        Err.setString(PyExc_TypeError, "incorrect argument count");
+        Err.setString(Err.Standard.TypeError(), "incorrect argument count");
         return ArgsError.Argcount;
     }
     var out_tuple: T = undefined;
@@ -1256,7 +1287,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
             const field_type = @typeInfo(field.type).pointer.child;
             @field(out_tuple, field.name) = try field_type.fromObject(item_obj);
         } else {
-            Err.setString(PyExc_TypeError, "no such key in kwargs");
+            Err.setString(Err.Standard.TypeError(), "no such key in kwargs");
             return KwargsError.KeyNotFound;
         }
     }
@@ -1366,7 +1397,7 @@ pub fn WrapObject(
                         const args: ArgsType = parseArgs(args_obj, ArgsType) catch return -1;
                         if (_kwargs_null != null) {
                             @branchHint(.unlikely);
-                            Err.setString(PyExc_TypeError, "kwargs is not allowed");
+                            Err.setString(Err.Standard.TypeError(), "kwargs is not allowed");
                             return -1;
                         }
                         _vtable.py_init(&self.inner, args) catch return -1;
@@ -1420,7 +1451,7 @@ pub fn WrapObject(
                                     getsetdef.set(&self.inner, value) catch return -1;
                                     return 0;
                                 } else {
-                                    Err.setString(PyExc_AttributeError, "delete the attribute is not supported");
+                                    Err.setString(Err.Standard.AttributeError(), "delete the attribute is not supported");
                                     return -1;
                                 }
                             }
@@ -1463,7 +1494,7 @@ pub fn WrapObject(
                             pub fn py_method(_self_null: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.C) ?*c.PyObject {
                                 if (_self_null != null) {
                                     @branchHint(.unlikely);
-                                    Err.setString(PyExc_TypeError, "self is not null");
+                                    Err.setString(Err.Standard.TypeError(), "self is not null");
                                     return null;
                                 }
                                 const args_obj: *TupleObject = TupleObject.fromObject(.fromC(args_opt.?)) catch return null;
@@ -1488,7 +1519,7 @@ pub fn WrapObject(
             if (default_isType(obj, type_obj)) {
                 return @fieldParentPtr("ob_base", obj);
             } else {
-                Err.setString(PyExc_TypeError, "");
+                Err.setString(Err.Standard.TypeError(), "");
                 return TypeError.PyType;
             }
         }
@@ -1658,7 +1689,7 @@ pub fn callObject(callable: *Object, args: *TupleObject) CallError!*Object {
         return Object.fromC(result_opt);
     } else {
         @branchHint(.unlikely);
-        const pyerr = Err.occurred();
+        const pyerr: ?*Object = Err.occurred();
         assert(pyerr != null);
         return CallError.Call;
     }
@@ -1946,7 +1977,7 @@ pub const CustomError = error{Custom};
 // ========================================================================= //
 //
 
-/// Leftover python declaration.
+/// Leftover python declaration. Acts as a fallback.
 pub const c = @import("c");
 
 // ========================================================================= //
