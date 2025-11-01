@@ -1368,7 +1368,7 @@ pub fn WrapObject(
             };
             if (@hasDecl(_vtable, "py_new")) {
                 type_obj_tmp.tp_new = struct {
-                    pub fn py_new(py_type_c: ?*c.PyTypeObject, _args_opt: ?*c.PyObject, _kwargs_opt: ?*c.PyObject) callconv(.C) ?*c.PyObject {
+                    pub fn py_new(py_type_c: ?*c.PyTypeObject, _args_opt: ?*c.PyObject, _kwargs_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
                         _ = _args_opt;
                         _ = _kwargs_opt;
                         const self_obj: *Object = TypeObject.fromC(py_type_c.?).alloc() catch return null;
@@ -1379,7 +1379,7 @@ pub fn WrapObject(
                 }.py_new;
             } else {
                 type_obj_tmp.tp_new = struct {
-                    pub fn py_new(py_type_c: ?*c.PyTypeObject, _args_opt: ?*c.PyObject, _kwargs_opt: ?*c.PyObject) callconv(.C) ?*c.PyObject {
+                    pub fn py_new(py_type_c: ?*c.PyTypeObject, _args_opt: ?*c.PyObject, _kwargs_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
                         _ = _args_opt;
                         _ = _kwargs_opt;
                         const self_obj: *Object = TypeObject.fromC(py_type_c.?).alloc() catch return null;
@@ -1391,7 +1391,7 @@ pub fn WrapObject(
                 const params = @typeInfo(@TypeOf(_vtable.py_init)).@"fn".params;
                 const ArgsType = params[1].type.?;
                 type_obj_tmp.tp_init = struct {
-                    pub fn py_init(self_opt: ?*c.PyObject, args_opt: ?*c.PyObject, _kwargs_null: ?*c.PyObject) callconv(.C) c_int {
+                    pub fn py_init(self_opt: ?*c.PyObject, args_opt: ?*c.PyObject, _kwargs_null: ?*c.PyObject) callconv(.c) c_int {
                         const self: *Self = Self.fromObject(.fromC(self_opt.?)) catch return -1;
                         const args_obj: *TupleObject = TupleObject.fromObject(.fromC(args_opt.?)) catch return -1;
                         const args: ArgsType = parseArgs(args_obj, ArgsType) catch return -1;
@@ -1407,7 +1407,7 @@ pub fn WrapObject(
             }
             if (@hasDecl(_vtable, "py_dealloc")) {
                 type_obj_tmp.tp_dealloc = struct {
-                    pub fn py_dealloc(self_opt: ?*c.PyObject) callconv(.C) void {
+                    pub fn py_dealloc(self_opt: ?*c.PyObject) callconv(.c) void {
                         const self: *Self = Self.fromObject(.fromC(self_opt.?)) catch return;
                         _vtable.py_dealloc(&self.inner);
                         self.ob_base.ob_type.?.tp_free.?(self.toObject().toC());
@@ -1459,7 +1459,7 @@ pub fn WrapObject(
                     }
                 }
                 const py_getsetdef_list_const = py_getsetdef_list;
-                type_obj_tmp.tp_getset = @constCast(@ptrCast(&py_getsetdef_list_const));
+                type_obj_tmp.tp_getset = @ptrCast(@constCast(&py_getsetdef_list_const));
             }
             if (@hasDecl(_vtable, "py_methods")) {
                 const structinfo = @typeInfo(@TypeOf(_vtable.py_methods)).@"struct";
@@ -1479,7 +1479,7 @@ pub fn WrapObject(
                     if (py_methoddef.ml_flags == PyMethodDef.Flag.default) {
                         const ArgsType = params[1].type.?;
                         py_methoddef.ml_meth = struct {
-                            pub fn py_method(self_opt: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.C) ?*c.PyObject {
+                            pub fn py_method(self_opt: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
                                 const self: *Self = Self.fromObject(.fromC(self_opt.?)) catch return null;
                                 const args_obj: *TupleObject = TupleObject.fromObject(.fromC(args_opt.?)) catch return null;
                                 const args: ArgsType = parseArgs(args_obj, ArgsType) catch
@@ -1491,7 +1491,7 @@ pub fn WrapObject(
                     } else if (py_methoddef.ml_flags == PyMethodDef.Flag.static) {
                         const ArgsType = params[0].type.?;
                         py_methoddef.ml_meth = struct {
-                            pub fn py_method(_self_null: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.C) ?*c.PyObject {
+                            pub fn py_method(_self_null: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
                                 if (_self_null != null) {
                                     @branchHint(.unlikely);
                                     Err.setString(Err.Standard.TypeError(), "self is not null");
@@ -1508,7 +1508,7 @@ pub fn WrapObject(
                     }
                 }
                 const py_methoddef_list_const = py_methoddef_list;
-                type_obj_tmp.tp_methods = @constCast(@ptrCast(&py_methoddef_list_const));
+                type_obj_tmp.tp_methods = @ptrCast(@constCast(&py_methoddef_list_const));
             }
             break :blk type_obj_tmp;
         };

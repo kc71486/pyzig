@@ -26,6 +26,7 @@
 ### changes
 * change `@cimport` into `b.addTranslateC` and `c` module, make `py` module able to use debug build.
 * `py` module no longer links libc.
+* change all `callconv(.C)` -> `callconv(.c)`.
 
 ### bug fixes
 * fix `DictObject.fromObject` discription.

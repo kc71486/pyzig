@@ -7,6 +7,7 @@
   * This package make use of immortal object, and python < 3.12 will not clean up these object on exit.
 This is not memory leak (they are singleton and have static lifetime in python < 3.12).
 * This is written in zig 0.14.0, any version greater than this will not guarantee to work.
+  * This is 0.14.1 and 0.15.1 compatible.
 
 ### features
 
