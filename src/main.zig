@@ -941,7 +941,14 @@ pub const Builtin = struct {
     }
 
     pub fn str(obj: *Object) BuiltinError!*Object {
-        const result: *c.PyObject = c.PyObject_Str(obj.toC()) orelse return BuiltinError.Str;
+        const result: *c.PyObject = c.PyObject_Str(obj.toC()) orelse
+            return BuiltinError.Str;
+        return Object.fromC(result);
+    }
+
+    pub fn getItem(obj: *Object, key: *Object) BuiltinError!*Object {
+        const result: *c.PyObject = c.PyObject_GetItem(obj.toC(), key.toC()) orelse
+            return BuiltinError.GetItem;
         return Object.fromC(result);
     }
 
@@ -1968,7 +1975,7 @@ pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
 /// Builtin error.
-pub const BuiltinError = error{ Str, Print };
+pub const BuiltinError = error{ Str, GetItem, Print };
 /// Interpreter error.
 pub const InterpreterError = error{Finalize};
 /// Custom error generated from Err.customError()

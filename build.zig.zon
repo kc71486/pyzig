@@ -1,7 +1,7 @@
 .{
     .name = .pyzig,
     .fingerprint = 0x17483157b9956b88,
-    .version = "0.3.0-dev.8",
+    .version = "0.3.0-dev.9",
     .minimum_zig_version = "0.14.0",
     .paths = .{
         "include",
