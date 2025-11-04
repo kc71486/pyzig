@@ -1,5 +1,8 @@
 ## 0.3.0
 
+### minimum version change
+* The minimum version is now 0.15.1, although most functions still work well in 0.14.1.
+
 ### Err namespace reformation
 * Add `Standard` namespace, holding various standard exception.
 * Change all functions in Err namespace to accept and return `*Object` instead of `*c.pyObject`.
@@ -14,21 +17,24 @@
   * `PrintError.Print` -> `BuiltinError.Print`.
 
 ### deprecations
-* add `None()`, deprecate `Py_None()`
+* Add `None()`, deprecate `Py_None()`.
 
 ### new stuffs
-* add `wrapPyCFunctionDefault`.
-* add `fromObjectExact` and `isDictExact` in DictObject.
-* add `Err.customError([*:0]const u8)` and CustomError.
-* add `Interpreter` and `InterpreterError`.
-* add more functions in `Builtin` namespace.
+* Add `wrapPyCFunctionDefault`.
+* Add `fromObjectExact` and `isDictExact` in DictObject.
+* Add `Err.customError([*:0]const u8)` and CustomError.
+* Add `Interpreter` and `InterpreterError`.
+* Add more functions in `Builtin` namespace.
+* Add more functions in `DictObject`.
+* Add kwargs variants to `call`, `callObject`, and `callMethod`.
 
 ### changes
-* change `@cimport` into `b.addTranslateC` and `c` module, make `py` module able to use debug build.
+* Change `@cimport` into `b.addTranslateC` and `c` module, make `py` module able to use debug build.
 * `py` module no longer links libc.
-* change all `callconv(.C)` -> `callconv(.c)`.
+* Change all `callconv(.C)` -> `callconv(.c)`.
 
 ### bug fixes
-* fix `DictObject.fromObject` discription.
-* fix `DictObject.fromObjectFast` return type.
-* make `DictObject.toObject` and `DictObject.getItem` work.
+* Fix `DictObject.fromObject` discription.
+* Fix `DictObject.fromObjectFast` return type.
+* Make `DictObject.toObject` and `DictObject.getItem` work.
+* Make `Builtin.print` work (by using zig print).

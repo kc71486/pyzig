@@ -813,10 +813,10 @@ pub const TupleObject = extern struct {
 
     pub fn fromTuple(tuple: anytype) MemoryError!*TupleObject {
         const fields = @typeInfo(@TypeOf(tuple)).@"struct".fields;
-        const tuple_obj: *TupleObject = try TupleObject.new(fields.len);
+        const tuple_obj: *TupleObject = try .new(fields.len);
         inline for (fields, 0..) |field, idx| {
-            const item = @field(tuple, field.name).toObject();
-            tuple_obj.setItem(@intCast(idx), item) catch unreachable;
+            const item = @field(tuple, field.name);
+            tuple_obj.setItem(@intCast(idx), item.toObject()) catch unreachable;
         }
         return tuple_obj;
     }
@@ -886,6 +886,15 @@ pub const DictObject = extern struct {
         return &self.ob_base;
     }
 
+    /// Return a new dict object, set exception and return error
+    /// on failure.
+    ///
+    /// Returns a new reference.
+    pub fn new() MemoryError!*DictObject {
+        const obj_c: *c.PyObject = c.PyDict_New() orelse return MemoryError.PyAlloc;
+        return DictObject.fromObjectFast(.fromC(obj_c));
+    }
+
     pub fn isDict(obj: *Object) bool {
         return c.PyDict_Check(obj.toC()) != 0;
     }
@@ -894,6 +903,8 @@ pub const DictObject = extern struct {
         return c.PyDict_CheckExact(obj.toC()) != 0;
     }
 
+    /// Insert value into the with key. Key must be hashable, otherwise return
+    /// TypeError.
     pub fn setItem(self: *DictObject, key: *Object, value: *Object) TypeError!void {
         // c.PyDict_SetItem doesn't steal reference
         const result: i32 = c.PyDict_SetItem(self.toObject().toC(), key.toC(), value.toC());
@@ -921,6 +932,17 @@ pub const DictObject = extern struct {
         const key_obj: *UnicodeObject = .fromString(key);
         return try self.getItem(key_obj.toObject());
     }
+
+    pub fn fromStruct(_struct: anytype) MemoryError!*DictObject {
+        const fields = @typeInfo(@TypeOf(_struct)).@"struct".fields;
+        const dict_obj: *DictObject = try .new();
+        inline for (fields) |field| {
+            const key: *UnicodeObject = .fromString(field.name);
+            const item = @field(_struct, field.name);
+            dict_obj.setItem(key.toObject(), item.toObject()) catch unreachable;
+        }
+        return dict_obj;
+    }
 };
 
 // ========================================================================= //
@@ -940,10 +962,10 @@ pub const Builtin = struct {
         return Object.fromC(c.PyEval_GetGlobals());
     }
 
-    pub fn str(obj: *Object) BuiltinError!*Object {
+    pub fn str(obj: *Object) BuiltinError!*UnicodeObject {
         const result: *c.PyObject = c.PyObject_Str(obj.toC()) orelse
             return BuiltinError.Str;
-        return Object.fromC(result);
+        return UnicodeObject.fromObject(.fromC(result)) catch unreachable;
     }
 
     pub fn getItem(obj: *Object, key: *Object) BuiltinError!*Object {
@@ -953,10 +975,15 @@ pub const Builtin = struct {
     }
 
     pub fn print(obj: *Object) BuiltinError!void {
-        const result = c.PyObject_Print(obj.toC(), c.stdout, c.Py_PRINT_RAW);
-        if (result == -1) {
-            return BuiltinError.Print;
-        }
+        const gpa: std.mem.Allocator = std.heap.page_allocator;
+        const obj_str: *UnicodeObject = try str(obj);
+        const str_ = try obj_str.toOwnedSlice(gpa);
+        defer gpa.free(str_);
+        var stdout_buffer: [64]u8 = undefined;
+        var stdout_writer: std.fs.File.Writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout: *std.io.Writer = &stdout_writer.interface;
+        stdout.print("{s}\n", .{str_}) catch return BuiltinError.Print;
+        stdout.flush() catch return BuiltinError.Print;
     }
 
     /// Equivilent to python's `type(obj)`, returns a pointer of type `*TypeObject`.
@@ -1653,6 +1680,14 @@ pub fn call(callable: *Object, args: anytype) CallError!*Object {
     return try callObject(callable, args_obj);
 }
 
+pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*Object {
+    const args_obj: *TupleObject = try TupleObject.fromTuple(args);
+    defer DecRef(args_obj.toObject());
+    const kwargs_obj: *DictObject = try DictObject.fromStruct(kwargs);
+    defer DecRef(kwargs_obj.toObject());
+    return try callObjectKwargs(callable, args_obj, kwargs_obj);
+}
+
 /// Equivilent to `callable()`.
 ///
 /// Returns a new reference.
@@ -1685,12 +1720,39 @@ pub fn callMethod(obj: *Object, name: [*:0]const u8, args: anytype) CallError!*O
     return try callObject(method, args_obj);
 }
 
+pub fn callMethodKwargs(obj: *Object, name: [*:0]const u8, args: anytype, kwargs: anytype) CallError!*Object {
+    const method: *Object = try getAttrString(obj, name);
+    defer DecRef(method);
+    // obj is not in args
+    const args_obj: *TupleObject = try .fromTuple(args);
+    defer DecRef(args_obj.toObject());
+    const kwargs_obj: *DictObject = try .fromStruct(kwargs);
+    defer DecRef(kwargs_obj.toObject());
+    return try callObjectKwargs(method, args_obj, kwargs_obj);
+}
+
 /// Returns a new reference.
 pub fn callObject(callable: *Object, args: *TupleObject) CallError!*Object {
     const result_opt_c: ?*c.PyObject = c.PyObject_Call(
         callable.toC(),
         args.toObject().toC(),
         null,
+    );
+    if (result_opt_c) |result_opt| {
+        return Object.fromC(result_opt);
+    } else {
+        @branchHint(.unlikely);
+        const pyerr: ?*Object = Err.occurred();
+        assert(pyerr != null);
+        return CallError.Call;
+    }
+}
+
+pub fn callObjectKwargs(callable: *Object, args: *TupleObject, kwargs: *DictObject) CallError!*Object {
+    const result_opt_c: ?*c.PyObject = c.PyObject_Call(
+        callable.toC(),
+        args.toObject().toC(),
+        kwargs.toObject().toC(),
     );
     if (result_opt_c) |result_opt| {
         return Object.fromC(result_opt);
@@ -1975,7 +2037,7 @@ pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
 /// Builtin error.
-pub const BuiltinError = error{ Str, GetItem, Print };
+pub const BuiltinError = UnicodeError || MemoryError || error{ Str, GetItem, Print };
 /// Interpreter error.
 pub const InterpreterError = error{Finalize};
 /// Custom error generated from Err.customError()
