@@ -1,3 +1,8 @@
+## 0.3.1
+
+### bug fixes
+* Fix `BoolObject.fromBool`.
+
 ## 0.3.0
 
 ### minimum version change

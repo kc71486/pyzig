@@ -428,11 +428,11 @@ pub const BoolObject = extern struct {
     pub fn fromBool(v: bool) *BoolObject {
         if (v) {
             const t = Py_True();
-            IncRef(t);
+            IncRef(t.toObject());
             return t;
         } else {
             const f = Py_False();
-            IncRef(f);
+            IncRef(f.toObject());
             return f;
         }
     }
