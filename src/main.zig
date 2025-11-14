@@ -975,10 +975,9 @@ pub const Builtin = struct {
     }
 
     pub fn print(obj: *Object) BuiltinError!void {
-        const gpa: std.mem.Allocator = std.heap.page_allocator;
         const obj_str: *UnicodeObject = try str(obj);
-        const str_ = try obj_str.toOwnedSlice(gpa);
-        defer gpa.free(str_);
+        const str_ = try obj_str.toOwnedSlice(global_gpa);
+        defer global_gpa.free(str_);
         var stdout_buffer: [64]u8 = undefined;
         var stdout_writer: std.fs.File.Writer = std.fs.File.stdout().writer(&stdout_buffer);
         var stdout: *std.io.Writer = &stdout_writer.interface;
@@ -990,8 +989,20 @@ pub const Builtin = struct {
     ///
     /// Returns a new Reference.
     pub fn Type(obj: *Object) TypeError!*Object {
-        return c.PyObject_Type(obj.toC()) orelse TypeError.SystemError;
+        const type_c: *c.PyObject = c.PyObject_Type(obj.toC()) orelse return TypeError.SystemError;
+        return .fromC(type_c);
     }
+};
+
+const global_gpa: Allocator = gpa: {
+    if (builtin.os.tag == .wasi) break :gpa std.heap.wasm_allocator;
+    if (builtin.link_libc) {
+        if (@alignOf(std.c.max_align_t) < @max(@alignOf(i128), std.atomic.cache_line)) {
+            break :gpa std.heap.c_allocator;
+        }
+        break :gpa std.heap.raw_c_allocator;
+    }
+    break :gpa std.heap.smp_allocator;
 };
 
 // ========================================================================= //
@@ -1040,23 +1051,69 @@ pub const Err = struct {
         _ = occurred();
         c.PyErr_SetString(exception.toC(), string);
     }
+
     /// Set the error indicator. To raise exception, return special value from the caller.
     pub fn setObject(exception: *Object, object: *Object) void {
         c.PyErr_SetObject(exception.toC(), object.toC());
     }
-    /// Clear the error indicator and print the traceback.
+
+    /// Clear the error indicator and print the traceback if there is an error.
     pub fn print() void {
+        const exception_opt: ?*Object = getRaisedException();
+        if (exception_opt) |_| {
+            c.PyErr_Print();
+        }
+    }
+
+    /// Clear the error indicator and print the traceback. Asserts error indicator is set.
+    pub fn printAssertError() void {
         c.PyErr_Print();
     }
+
+    /// Print the traceback if there is an error.
+    pub fn printRetainError() void {
+        const exception_opt: ?*Object = getRaisedException();
+        if (exception_opt) |exception| {
+            displayException(exception);
+            setRaisedException(exception);
+        }
+    }
+
     /// Print the traceback.
     pub fn displayException(exception: *Object) void {
         c.PyErr_DisplayException(exception.toC());
     }
+
     /// Test whether the error indicator is set. If set, return the exception
     /// type. If not set, return null.
     pub fn occurred() ?*Object {
-        return .fromC(c.PyErr_Occurred() orelse return null);
+        const exception_c: *c.PyObject = c.PyErr_Occurred() orelse return null;
+        return .fromC(exception_c);
     }
+
+    /// Clear the error indicator. Return the exception currently being raised.
+    /// Return null if the error indicator is not set.
+    pub fn getRaisedException() ?*Object {
+        const exception_c: *c.PyObject = c.PyErr_GetRaisedException() orelse return null;
+        return .fromC(exception_c);
+    }
+
+    pub fn setRaisedException(exception: *Object) void {
+        c.PyErr_SetRaisedException(exception.toC());
+    }
+
+    /// Retrieve the active exception instance. This refers to an exception that
+    /// was already caught, not to an exception that was freshly raised. Return
+    /// null if there are no active exception.
+    pub fn getHandledException() ?*Object {
+        const exception_c: *c.PyObject = c.PyErr_GetHandledException() orelse return null;
+        return .fromC(exception_c);
+    }
+
+    pub fn setHandledException(exception: *Object) void {
+        c.PyErr_SetHandledException(exception.toC());
+    }
+
     /// Create custom exception object. The name argument must be the name of
     /// the new exception.
     ///
@@ -1066,16 +1123,19 @@ pub const Err = struct {
         const dict_c: ?*c.PyObject = if (dict_opt) |dict| dict.toC() else null;
         return .fromC(c.PyErr_NewException(name, base_c, dict_c) orelse return null);
     }
+
     /// Set the error indicator and return Allocator.Error.
     pub fn outOfMemory() Allocator.Error {
         setString(Standard.MemoryError(), "Allocator Error");
         return error.OutOfMemory;
     }
+
     /// Set the error indicator and return error.NullObject.
     pub fn noneError(string: [*:0]const u8) TypeError {
         setString(Standard.TypeError(), string);
         return error.NullObject;
     }
+
     /// Set the error indicator and return error.CustomError
     pub fn customError(string: [*:0]const u8) CustomError {
         setString(Standard.Exception(), string);
@@ -1744,6 +1804,7 @@ pub fn callObject(callable: *Object, args: *TupleObject) CallError!*Object {
         @branchHint(.unlikely);
         const pyerr: ?*Object = Err.occurred();
         assert(pyerr != null);
+        Err.printRetainError();
         return CallError.Call;
     }
 }
@@ -1760,6 +1821,7 @@ pub fn callObjectKwargs(callable: *Object, args: *TupleObject, kwargs: *DictObje
         @branchHint(.unlikely);
         const pyerr: ?*Object = Err.occurred();
         assert(pyerr != null);
+        Err.printRetainError();
         return CallError.Call;
     }
 }
@@ -2051,6 +2113,8 @@ pub const c = @import("c");
 
 // ========================================================================= //
 // Imports
+
+const builtin = @import("builtin");
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

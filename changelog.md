@@ -3,6 +3,9 @@
 ### bug fixes
 * Fix `BoolObject.fromBool`.
 
+### changes
+* `Builtin.print` now uses batter global allocator.
+
 ## 0.3.0
 
 ### minimum version change
