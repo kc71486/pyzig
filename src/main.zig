@@ -1748,15 +1748,6 @@ pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*
     return try callObjectKwargs(callable, args_obj, kwargs_obj);
 }
 
-/// Equivilent to `callable()`.
-///
-/// Returns a new reference.
-pub fn callNoArgs(callable: *Object) CallError!*Object {
-    const _args: *TupleObject = try TupleObject.new(0);
-    defer DecRef(_args.toObject());
-    return try callObject(callable, _args);
-}
-
 /// Equivilent to `AnyObject.name(*args)`.
 ///
 /// Returns a new reference.
@@ -1827,7 +1818,7 @@ pub fn callObjectKwargs(callable: *Object, args: *TupleObject, kwargs: *DictObje
 }
 
 /// Calls python `__new__` with no argument. To fully initialize an object, use
-/// callNoArgs(type_obj.toObject()) or callObject(type_obj.toObject(), args)
+/// call(type_obj.toObject(), .{}) or callObject(type_obj.toObject(), args)
 pub fn callNew(T: type, type_obj: *TypeObject) MemoryTypeError!*T {
     const new_args: *TupleObject = try TupleObject.new(0);
     const obj_c: *c.PyObject = type_obj.tp_new.?(type_obj.toC(), new_args.toObject().toC(), null);

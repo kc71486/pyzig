@@ -1,10 +1,16 @@
+## 0.4.0
+
+### removed stuffs
+* Remove `callNoArgs`.
+  * `call(obj, .{})` already accomplishes this, and there is no function duplication issues.
+
 ## 0.3.1
 
 ### bug fixes
 * Fix `BoolObject.fromBool`.
 
 ### changes
-* `Builtin.print` now uses batter global allocator.
+* `Builtin.print` now uses better global allocator.
 
 ## 0.3.0
 
