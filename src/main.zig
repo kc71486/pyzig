@@ -601,11 +601,11 @@ pub const UnicodeObject = extern struct {
 
     /// Turns unicode object into string. Setup PyExc_UnicodeError and return
     /// UnicodeError when failed.
-    pub fn toOwnedSlice(self: *UnicodeObject, allocator: Allocator) (UnicodeError || MemoryError)![:0]u8 {
+    pub fn toOwnedSlice(self: *UnicodeObject, gpa: Allocator) (UnicodeError || MemoryError)![:0]u8 {
         var str_size: isize = undefined;
         const str_opt: ?[*:0]const u8 = c.PyUnicode_AsUTF8AndSize(self.toObject().toC(), &str_size);
         if (str_opt) |str| {
-            return allocator.dupeZ(u8, str[0..@intCast(str_size)]) catch
+            return gpa.dupeZ(u8, str[0..@intCast(str_size)]) catch
                 return Err.outOfMemory();
         } else {
             Err.setString(Err.Standard.UnicodeError(), "");
@@ -713,12 +713,12 @@ pub const ListObject = extern struct {
     }
 
     /// Turns list into array of pointer of type T.
-    pub fn toOwnedSlice(self: *ListObject, allocator: Allocator, T: type) (TypeError || MemoryError)![]*T {
+    pub fn toOwnedSlice(self: *ListObject, gpa: Allocator, T: type) (TypeError || MemoryError)![]*T {
         if (comptime std.mem.eql(u8, @tagName(@typeInfo(T)), "pointer")) {
             @compileError(std.fmt.comptimePrint("T {} cannot be pointer", .{T}));
         }
         const size: usize = self.getSize();
-        const array: []*T = allocator.alloc(*T, size) catch
+        const array: []*T = gpa.alloc(*T, size) catch
             return Err.outOfMemory();
         for (0..size) |idx| {
             const item_obj: *Object = self.getItem(idx) catch unreachable;
@@ -728,9 +728,9 @@ pub const ListObject = extern struct {
     }
 
     /// Turns list into array of pointer of type Object.
-    pub fn toOwnedSliceObject(self: *ListObject, allocator: Allocator) MemoryError![]*Object {
+    pub fn toOwnedSliceObject(self: *ListObject, gpa: Allocator) MemoryError![]*Object {
         const size: usize = self.getSize();
-        const array: []*Object = allocator.alloc(*Object, size) catch
+        const array: []*Object = gpa.alloc(*Object, size) catch
             return Err.outOfMemory();
         for (0..size) |idx| {
             array[idx] = self.getItem(idx) catch unreachable;
@@ -822,9 +822,9 @@ pub const TupleObject = extern struct {
     }
 
     /// Turns tuple into array.
-    pub fn toOwnedSlice(self: *TupleObject, allocator: Allocator) Allocator.Error![]*Object {
+    pub fn toOwnedSlice(self: *TupleObject, gpa: Allocator) Allocator.Error![]*Object {
         const size: usize = self.getSize();
-        const array: []*Object = allocator.alloc(*Object, size) catch
+        const array: []*Object = gpa.alloc(*Object, size) catch
             return Err.outOfMemory();
         for (0..size) |idx| {
             array[idx] = self.getItem(idx) catch unreachable;
@@ -976,6 +976,7 @@ pub const Builtin = struct {
 
     pub fn print(obj: *Object) BuiltinError!void {
         const obj_str: *UnicodeObject = try str(obj);
+        defer DecRef(obj_str.toObject());
         const str_ = try obj_str.toOwnedSlice(global_gpa);
         defer global_gpa.free(str_);
         var stdout_buffer: [64]u8 = undefined;
@@ -1358,6 +1359,7 @@ pub fn parseArgs(args_tuple: *TupleObject, T: type) ArgsError!T {
     inline for (fields, 0..) |field, idx| {
         const field_type = @typeInfo(field.type).pointer.child;
         const item_obj: *Object = try args_tuple.getItem(idx);
+        errdefer DecRef(item_obj);
         @field(out_tuple, field.name) = try field_type.fromObject(item_obj);
     }
     return out_tuple;
@@ -1378,6 +1380,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
         const key: UnicodeObject = UnicodeObject.fromString(key_str);
         const item_opt: ?*Object = try args_dict.getItem(key.toObject());
         if (item_opt) |item_obj| {
+            errdefer DecRef(item_obj);
             const field_type = @typeInfo(field.type).pointer.child;
             @field(out_tuple, field.name) = try field_type.fromObject(item_obj);
         } else {
@@ -1821,10 +1824,9 @@ pub fn callObjectKwargs(callable: *Object, args: *TupleObject, kwargs: *DictObje
 /// call(type_obj.toObject(), .{}) or callObject(type_obj.toObject(), args)
 pub fn callNew(T: type, type_obj: *TypeObject) MemoryTypeError!*T {
     const new_args: *TupleObject = try TupleObject.new(0);
+    defer DecRef(new_args.toObject());
     const obj_c: *c.PyObject = type_obj.tp_new.?(type_obj.toC(), new_args.toObject().toC(), null);
-    const obj: *T = try T.fromObject(.fromC(obj_c));
-    DecRef(new_args.toObject());
-    return obj;
+    return try T.fromObject(.fromC(obj_c));
 }
 
 // ========================================================================= //
@@ -1923,15 +1925,16 @@ fn listFromStrArrayInner(str_array: anytype, outlist: *ListObject) ListConversio
     }
 }
 
-pub fn ndarrayFromList(allocator: Allocator, list: *ListObject, T: type) ListConversionError!T {
+pub fn ndarrayFromList(gpa: Allocator, list: *ListObject, T: type) ListConversionError!T {
     const Child = @typeInfo(T).pointer.child;
-    const outarray = allocator.alloc(Child, list.getSize()) catch
+    const outarray = gpa.alloc(Child, list.getSize()) catch
         return Err.outOfMemory();
-    try ndarrayFromListAlloc(allocator, list, outarray);
+    errdefer gpa.free(outarray);
+    try ndarrayFromListAlloc(gpa, list, outarray);
     return outarray;
 }
 
-fn ndarrayFromListAlloc(allocator: Allocator, list_obj: *ListObject, outarray: anytype) ListConversionError!void {
+fn ndarrayFromListAlloc(gpa: Allocator, list_obj: *ListObject, outarray: anytype) ListConversionError!void {
     const Child = @typeInfo(@TypeOf(outarray)).pointer.child;
     const size: usize = list_obj.getSize();
     assert(size == outarray.len);
@@ -1951,13 +1954,13 @@ fn ndarrayFromListAlloc(allocator: Allocator, list_obj: *ListObject, outarray: a
             }
         },
         .pointer => {
-            const list: []*ListObject = try list_obj.toOwnedSlice(allocator, ListObject);
-            defer allocator.free(list);
+            const list: []*ListObject = try list_obj.toOwnedSlice(gpa, ListObject);
+            defer gpa.free(list);
             for (list, outarray) |item, *out_item| {
                 const Gchild = @typeInfo(Child).pointer.child;
-                out_item.* = allocator.alloc(Gchild, item.getSize()) catch
+                out_item.* = gpa.alloc(Gchild, item.getSize()) catch
                     return Err.outOfMemory();
-                try ndarrayFromListAlloc(allocator, item, out_item.*);
+                try ndarrayFromListAlloc(gpa, item, out_item.*);
             }
         },
         else => @compileError("type not allowed"),
@@ -1995,33 +1998,33 @@ pub fn ndarrayFromListFill(list_obj: *ListObject, outarray: anytype) ListConvers
     }
 }
 
-pub fn strArrayFromList(allocator: Allocator, list: *ListObject, T: type) ListConversionError!T {
+pub fn strArrayFromList(gpa: Allocator, list: *ListObject, T: type) ListConversionError!T {
     const Child = @typeInfo(T).pointer.child;
-    const outarray = allocator.alloc(Child, list.getSize()) catch
+    const outarray = gpa.alloc(Child, list.getSize()) catch
         return Err.outOfMemory();
-    try strArrayFromListInner(allocator, list, T, outarray);
+    try strArrayFromListInner(gpa, list, T, outarray);
     return outarray;
 }
 
-fn strArrayFromListInner(allocator: Allocator, list_obj: *ListObject, T: type, outarray: T) ListConversionError!void {
+fn strArrayFromListInner(gpa: Allocator, list_obj: *ListObject, T: type, outarray: T) ListConversionError!void {
     const Child = @typeInfo(T).pointer.child;
     const GChild = @typeInfo(Child).pointer.child;
     switch (@typeInfo(GChild)) {
         .int => {
-            const list: []*UnicodeObject = try list_obj.toOwnedSlice(allocator, UnicodeObject);
-            defer allocator.free(list);
+            const list: []*UnicodeObject = try list_obj.toOwnedSlice(gpa, UnicodeObject);
+            defer gpa.free(list);
             for (list, outarray) |item, *out_item| {
-                out_item.* = try item.toOwnedSlice(allocator);
+                out_item.* = try item.toOwnedSlice(gpa);
             }
         },
         .pointer => {
-            const list: []*ListObject = try list_obj.toOwnedSlice(allocator, ListObject);
-            defer allocator.free(list);
+            const list: []*ListObject = try list_obj.toOwnedSlice(gpa, ListObject);
+            defer gpa.free(list);
             for (list, outarray) |item, *out_item| {
                 const Gchild = @typeInfo(Child).pointer.child;
-                out_item.* = allocator.alloc(Gchild, item.getSize()) catch
+                out_item.* = gpa.alloc(Gchild, item.getSize()) catch
                     return Err.outOfMemory();
-                try strArrayFromListInner(allocator, item, Child, out_item.*);
+                try strArrayFromListInner(gpa, item, Child, out_item.*);
             }
         },
         else => @compileError("type not allowed"),

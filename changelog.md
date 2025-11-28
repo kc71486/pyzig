@@ -4,6 +4,12 @@
 * Remove `callNoArgs`.
   * `call(obj, .{})` already accomplishes this, and there is no function duplication issues.
 
+### changes
+* change various argument name: `allocator` -> `gpa`.
+
+### bug fixes
+* Add various `defer` and `errdefer` for cleanup.
+
 ## 0.3.1
 
 ### bug fixes
