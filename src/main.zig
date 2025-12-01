@@ -11,6 +11,7 @@
 //! * Base Object type
 //! * Type Object (object metadata)
 //! * Builtin types
+//! * Python Iterators
 //! * Builtin functions
 //! * Python Error functions and types
 //! * Module creation / declarations
@@ -23,7 +24,9 @@
 //! * Import / Call
 //! * Direct interpreter interaction
 //! * Misc helper
+//! * compile time stuff
 //! * Zig error set
+//! * global variables
 //! * Imports
 
 // ========================================================================= //
@@ -946,6 +949,55 @@ pub const DictObject = extern struct {
 };
 
 // ========================================================================= //
+// Python Iterators
+
+/// Iterator interface.
+pub const Iterator = struct {
+    ptr: *Object,
+
+    /// Make the object an iterator if possible, otherwise set exception and
+    /// return error.
+    pub fn fromObject(object: *Object) TypeError!Iterator {
+        if (isIterator(object)) {
+            return fromObjectFast(object);
+        } else {
+            Err.setString(Err.Standard.TypeError(), "not an iterator");
+            return TypeError.PyType;
+        }
+    }
+
+    /// Make the object an iterator without checking.
+    pub fn fromObjectFast(object: *Object) Iterator {
+        return .{
+            .ptr = object,
+        };
+    }
+
+    pub fn toObject(self: Iterator) *Object {
+        return self.ptr;
+    }
+
+    /// Return true if the object is an Iterator.
+    pub fn isIterator(object: *Object) bool {
+        return c.PyIter_Check(object.toC()) != 0;
+    }
+
+    /// Return the next value from the iterator. Returns null if there are no
+    /// remaining values, returns IteratorError if an error occurs while
+    /// retrieving the item.
+    pub fn next(self: Iterator) IteratorError!?*Object {
+        const result_opt: ?*c.PyObject = c.PyIter_Next(self.ptr.toC());
+        if (result_opt) |result| {
+            return Object.fromC(result);
+        } else if (Err.occurred() != null) {
+            return IteratorError.Iter;
+        } else {
+            return null;
+        }
+    }
+};
+
+// ========================================================================= //
 // Builtin functions
 
 pub const Builtin = struct {
@@ -995,17 +1047,6 @@ pub const Builtin = struct {
     }
 };
 
-const global_gpa: Allocator = gpa: {
-    if (builtin.os.tag == .wasi) break :gpa std.heap.wasm_allocator;
-    if (builtin.link_libc) {
-        if (@alignOf(std.c.max_align_t) < @max(@alignOf(i128), std.atomic.cache_line)) {
-            break :gpa std.heap.c_allocator;
-        }
-        break :gpa std.heap.raw_c_allocator;
-    }
-    break :gpa std.heap.smp_allocator;
-};
-
 // ========================================================================= //
 // Python Error functions and types
 
@@ -1049,7 +1090,6 @@ pub const Err = struct {
     };
     /// Set the error indicator. To raise exception, return special value from the caller.
     pub fn setString(exception: *Object, string: [*:0]const u8) void {
-        _ = occurred();
         c.PyErr_SetString(exception.toC(), string);
     }
 
@@ -2076,6 +2116,8 @@ pub const ListError = error{List};
 pub const TupleError = error{Tuple};
 /// Python dict related error.
 pub const DictError = error{ Dict, KeyNotFound };
+/// Python iterator related error.
+pub const IteratorError = error{Iter};
 /// Python index error.
 pub const IndexError = error{ ListIndex, TupleIndex, DictIndex };
 /// Module creation related error.
@@ -2100,13 +2142,25 @@ pub const InterpreterError = error{Finalize};
 pub const CustomError = error{Custom};
 
 // ========================================================================= //
-//
+// global variables
 
-/// Leftover python declaration. Acts as a fallback.
-pub const c = @import("c");
+// No debugAllocator because it is not meant to deinit().
+const global_gpa: Allocator = gpa: {
+    if (builtin.os.tag == .wasi) break :gpa std.heap.wasm_allocator;
+    if (builtin.link_libc) {
+        if (@alignOf(std.c.max_align_t) < @max(@alignOf(i128), std.atomic.cache_line)) {
+            break :gpa std.heap.c_allocator;
+        }
+        break :gpa std.heap.raw_c_allocator;
+    }
+    break :gpa std.heap.smp_allocator;
+};
 
 // ========================================================================= //
 // Imports
+
+/// Leftover python declaration. Acts as a fallback.
+pub const c = @import("c");
 
 const builtin = @import("builtin");
 
