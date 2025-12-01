@@ -1967,71 +1967,40 @@ fn listFromStrArrayInner(str_array: anytype, outlist: *ListObject) ListConversio
 
 pub fn ndarrayFromList(gpa: Allocator, list: *ListObject, T: type) ListConversionError!T {
     const Child = @typeInfo(T).pointer.child;
-    const outarray = gpa.alloc(Child, list.getSize()) catch
+    const outslice = gpa.alloc(Child, list.getSize()) catch
         return Err.outOfMemory();
-    errdefer gpa.free(outarray);
-    try ndarrayFromListAlloc(gpa, list, outarray);
-    return outarray;
+    errdefer gpa.free(outslice);
+    try ndarrayFromListAlloc(gpa, list, outslice);
+    return outslice;
 }
 
-fn ndarrayFromListAlloc(gpa: Allocator, list_obj: *ListObject, outarray: anytype) ListConversionError!void {
-    const Child = @typeInfo(@TypeOf(outarray)).pointer.child;
+fn ndarrayFromListAlloc(gpa: Allocator, list_obj: *ListObject, outslice: anytype) ListConversionError!void {
+    const Child = @typeInfo(@TypeOf(outslice)).pointer.child;
     const size: usize = list_obj.getSize();
-    assert(size == outarray.len);
+    assert(size == outslice.len);
     switch (@typeInfo(Child)) {
         .int => {
             for (0..size) |idx| {
                 const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
                 const item_long: *LongObject = try .fromObject(item_obj);
-                outarray[idx] = try item_long.toInt(Child);
+                outslice[idx] = try item_long.toInt(Child);
             }
         },
         .float => {
             for (0..size) |idx| {
                 const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
                 const item_float: *FloatObject = try .fromObject(item_obj);
-                outarray[idx] = try item_float.tof64();
+                outslice[idx] = try item_float.tof64();
             }
         },
         .pointer => {
             const list: []*ListObject = try list_obj.toOwnedSlice(gpa, ListObject);
             defer gpa.free(list);
-            for (list, outarray) |item, *out_item| {
+            for (list, outslice) |item, *out_item| {
                 const Gchild = @typeInfo(Child).pointer.child;
                 out_item.* = gpa.alloc(Gchild, item.getSize()) catch
                     return Err.outOfMemory();
                 try ndarrayFromListAlloc(gpa, item, out_item.*);
-            }
-        },
-        else => @compileError("type not allowed"),
-    }
-}
-
-/// Asserts outarray.len == list_obj.getSize().
-pub fn ndarrayFromListFill(list_obj: *ListObject, outarray: anytype) ListConversionError!void {
-    const Child = @typeInfo(@TypeOf(outarray)).pointer.child;
-    const size: usize = list_obj.getSize();
-    assert(size == outarray.len);
-    switch (@typeInfo(Child)) {
-        .int => {
-            for (0..size) |idx| {
-                const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
-                const item_long: *LongObject = try .fromObject(item_obj);
-                outarray[idx] = try item_long.toInt(Child);
-            }
-        },
-        .float => {
-            for (0..size) |idx| {
-                const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
-                const item_float: *FloatObject = try .fromObject(item_obj);
-                outarray[idx] = try item_float.tof64();
-            }
-        },
-        .pointer => {
-            for (0..size) |idx| {
-                const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
-                const item_list: *ListObject = try .fromObject(item_obj);
-                try ndarrayFromListFill(item_list, outarray[idx]);
             }
         },
         else => @compileError("type not allowed"),

@@ -3,6 +3,11 @@
 ### removed stuffs
 * Remove `callNoArgs`.
   * `call(obj, .{})` already accomplishes this, and there is no function duplication issues.
+* Remove `ndarrayFromListFill`
+  * list size needs to be determined at runtime, in which `ndarrayFromList` does a better job.
+
+### new stuffs
+* Add `Iterator`.
 
 ### changes
 * change various argument name: `allocator` -> `gpa`.
