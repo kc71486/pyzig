@@ -8,9 +8,15 @@
 
 ### new stuffs
 * Add `Iterator`.
+* Add `TupleObject.toTuple`.
 
 ### changes
-* change various argument name: `allocator` -> `gpa`.
+* Change various argument name: `allocator` -> `gpa`.
+* Change `ListObject.fromSlice` to only accept object slice, add `ListObject.fromSliceT` for original
+purpose.
+* Change `TupleObject.fromTuple` to only accept object slice, add `TupleObject.fromTupleT` for original
+purpose.
+* `py.call` and its variant now only accepts `Object` in its tuple or struct.
 
 ### bug fixes
 * Add various `defer` and `errdefer` for cleanup.

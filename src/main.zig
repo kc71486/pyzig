@@ -706,8 +706,17 @@ pub const ListObject = extern struct {
         assert(result == 0);
     }
 
-    /// Turns array of pointer of type T into list.
-    pub fn fromSlice(T: type, slice: []*T) MemoryError!*ListObject {
+    /// Turns slice of object into ListObject.
+    pub fn fromSlice(slice: []*Object) MemoryError!*ListObject {
+        const list_obj: *ListObject = try ListObject.new(slice.len);
+        for (slice, 0..) |item, idx| {
+            list_obj.setItem(@intCast(idx), item) catch unreachable;
+        }
+        return list_obj;
+    }
+
+    /// Turns slice of pointer of type T into ListObject.
+    pub fn fromSliceT(T: type, slice: []*T) MemoryError!*ListObject {
         const list_obj: *ListObject = try ListObject.new(slice.len);
         for (slice, 0..) |item, idx| {
             list_obj.setItem(@intCast(idx), item.toObject()) catch unreachable;
@@ -814,7 +823,18 @@ pub const TupleObject = extern struct {
         }
     }
 
+    /// Turns tuple (or struct) of object into TupleObject.
     pub fn fromTuple(tuple: anytype) MemoryError!*TupleObject {
+        const fields = @typeInfo(@TypeOf(tuple)).@"struct".fields;
+        const tuple_obj: *TupleObject = try .new(fields.len);
+        inline for (fields, 0..) |field, idx| {
+            const item = @field(tuple, field.name);
+            tuple_obj.setItem(@intCast(idx), item) catch unreachable;
+        }
+        return tuple_obj;
+    }
+
+    pub fn fromTupleT(tuple: anytype) MemoryError!*TupleObject {
         const fields = @typeInfo(@TypeOf(tuple)).@"struct".fields;
         const tuple_obj: *TupleObject = try .new(fields.len);
         inline for (fields, 0..) |field, idx| {
@@ -824,7 +844,20 @@ pub const TupleObject = extern struct {
         return tuple_obj;
     }
 
-    /// Turns tuple into array.
+    /// Turns TupleObject into specified tuple. Asserts self.getSize() == T.fields.len.
+    /// If either length cannot be determined at compile time, use `toOwnedSlice`
+    /// instead.
+    pub fn toTuple(self: *TupleObject, T: type) IndexError!T {
+        const fields = @typeInfo(T).@"struct".fields;
+        assert(fields.len == self.getSize());
+        var out_tuple: T = undefined;
+        inline for (fields, 0..) |field, idx| {
+            @field(out_tuple, field.name) = self.getItem(idx) catch unreachable;
+        }
+        return out_tuple;
+    }
+
+    /// Turns TupleObject into array.
     pub fn toOwnedSlice(self: *TupleObject, gpa: Allocator) Allocator.Error![]*Object {
         const size: usize = self.getSize();
         const array: []*Object = gpa.alloc(*Object, size) catch
@@ -1435,7 +1468,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
 ///
 /// Returns a new reference.
 pub fn buildArgs(args: anytype) MemoryError!*TupleObject {
-    return try TupleObject.fromTuple(args);
+    return try TupleObject.fromTupleT(args);
 }
 
 // ========================================================================= //
