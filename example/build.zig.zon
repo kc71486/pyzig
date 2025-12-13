@@ -1,0 +1,17 @@
+.{
+    .name = .example,
+    .fingerprint = 0x6eec9b9f8000441b,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .pyzig = .{
+            .url = "https://github.com/kc71486/pyzig/archive/0.4.0.tar.gz",
+            .hash = "pyzig-0.4.0-iGuVuYXyHABvB_VwXRj8PAEC6xfhL8Cnb_wtYj39AXoR",
+        },
+    },
+}
