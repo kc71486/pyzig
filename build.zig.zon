@@ -1,12 +1,14 @@
 .{
     .name = .pyzig,
     .fingerprint = 0x17483157b9956b88,
-    .version = "0.4.0-dev.5",
+    .version = "0.4.0",
     .minimum_zig_version = "0.15.1",
     .paths = .{
         "include",
         "lib",
         "src",
+        // example is not part of the library
+        // "example",
         "build.zig",
         "build.zig.zon",
     },
