@@ -24,9 +24,9 @@ pub const Custom = struct {
 
 pub const CustomObject = py.WrapObject(Custom, Custom.type_obj, Custom);
 
-pub var module_def: py.PyModuleDef = .init("history", null, &module_methods, null);
-pub var module_methods: [1]py.PyMethodDef = .{
-    py.PyMethodDef.Sentinal,
+pub var module_def: py.ModuleDef = .init("history", null, &module_methods, null);
+pub var module_methods: [1]py.MethodDef = .{
+    py.MethodDef.Sentinal,
 };
 
 pub export fn PyInit_root() callconv(.c) ?*py.c.PyObject {

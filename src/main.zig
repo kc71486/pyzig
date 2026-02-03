@@ -1258,29 +1258,29 @@ pub const Err = struct {
 // ========================================================================= //
 // Module creation / declarations
 
-pub const PyModuleDef = extern struct {
-    m_base: PyModuleDef_Base = PyModuleDef_Base.init,
+pub const ModuleDef = extern struct {
+    m_base: ModuleDefBase = ModuleDefBase.init,
     m_name: [*:0]const u8,
     m_doc: ?[*:0]const u8,
     m_size: isize,
-    m_methods: ?[*]PyMethodDef,
+    m_methods: ?[*]MethodDef,
     m_slots: ?*c.PyModuleDef_Slot = null,
     m_traverse: c.traverseproc = null,
     m_clear: c.inquiry = null,
     m_free: ?*const fn (?*anyopaque) callconv(.c) void = null,
 
     comptime {
-        comp_assert.equalLayout(PyModuleDef, c.PyModuleDef);
+        comp_assert.equalLayout(ModuleDef, c.PyModuleDef);
     }
 
     pub fn init(
         name: [*:0]const u8,
         docs: ?[*:0]const u8,
-        methods: ?[*]PyMethodDef,
+        methods: ?[*]MethodDef,
         freefunc: ?*const fn (?*anyopaque) callconv(.c) void,
-    ) PyModuleDef {
+    ) ModuleDef {
         return .{
-            .m_base = PyModuleDef_Base.init,
+            .m_base = ModuleDefBase.init,
             .m_name = name,
             .m_doc = docs,
             .m_size = -1,
@@ -1290,29 +1290,29 @@ pub const PyModuleDef = extern struct {
         };
     }
 
-    fn toC(self: *PyModuleDef) *c.PyModuleDef {
+    fn toC(self: *ModuleDef) *c.PyModuleDef {
         return @ptrCast(self);
     }
 
     /// Create a new module object. Set exception and return ModuleError on failure.
-    pub fn create(module_def: *PyModuleDef) ModuleError!*Object {
+    pub fn create(module_def: *ModuleDef) ModuleError!*Object {
         const module: *c.PyObject = c.PyModule_Create2(module_def.toC(), c.PYTHON_API_VERSION) orelse
             return ModuleError.ModuleDef;
         return Object.fromC(module);
     }
 };
 
-pub const PyModuleDef_Base = extern struct {
+pub const ModuleDefBase = extern struct {
     ob_base: Object,
     m_init: ?*const fn () callconv(.c) ?[*]Object,
     m_index: isize,
     m_copy: ?[*]Object,
 
     comptime {
-        comp_assert.equalLayout(PyModuleDef_Base, c.PyModuleDef_Base);
+        comp_assert.equalLayout(ModuleDefBase, c.PyModuleDef_Base);
     }
 
-    pub const init: PyModuleDef_Base = .{
+    pub const init: ModuleDefBase = .{
         .ob_base = Object.init(null),
         .m_init = null,
         .m_index = 0,
@@ -1333,7 +1333,7 @@ pub const Module = struct {
 
 // ========================================================================= //
 // Member creation/declarations
-pub const PyMemberDef = extern struct {
+pub const MemberDef = extern struct {
     name: ?[*:0]const u8,
     type_: Type,
     offset: isize,
@@ -1341,7 +1341,7 @@ pub const PyMemberDef = extern struct {
     doc: ?[*:0]const u8,
 
     comptime {
-        comp_assert.equalLayout(PyMemberDef, c.PyMemberDef);
+        comp_assert.equalLayout(MemberDef, c.PyMemberDef);
     }
 
     pub const Type = enum(i32) {
@@ -1397,7 +1397,7 @@ pub const PyMemberDef = extern struct {
         _4: i28,
     };
 
-    pub const Sentinal: PyMethodDef = .{
+    pub const Sentinal: MethodDef = .{
         .name = null,
         .type_ = 0,
         .offset = 0,
@@ -1410,14 +1410,14 @@ pub const PyMemberDef = extern struct {
 // Method creation / declarations
 
 /// PyMethodDef with zig syntax. To use it, @ptrCast this into c.PyModuleDef.
-pub const PyMethodDef = extern struct {
+pub const MethodDef = extern struct {
     ml_name: ?[*:0]const u8,
     ml_meth: ?PyCFunction,
     ml_flags: Flag,
     ml_doc: ?[*:0]const u8 = null,
 
     comptime {
-        comp_assert.equalLayout(PyMethodDef, c.PyMethodDef);
+        comp_assert.equalLayout(MethodDef, c.PyMethodDef);
     }
 
     /// Method flag.
@@ -1438,7 +1438,7 @@ pub const PyMethodDef = extern struct {
         pub const static: Flag = .{ .VARARGS = true, .STATIC = true };
     };
 
-    pub const Sentinal: PyMethodDef = .{
+    pub const Sentinal: MethodDef = .{
         .ml_name = null,
         .ml_meth = null,
         .ml_flags = .{},
@@ -1447,7 +1447,7 @@ pub const PyMethodDef = extern struct {
 };
 pub const PyCFunction = *const fn (*c.PyObject, *c.PyObject) callconv(.c) ?*c.PyObject;
 
-pub const PyGetSetDef = extern struct {
+pub const GetSetDef = extern struct {
     name: ?[*:0]const u8,
     get: ?*const fn (?*c.PyObject, ?*anyopaque) callconv(.c) ?*c.PyObject = null,
     set: ?*const fn (?*c.PyObject, [*c]c.PyObject, ?*anyopaque) callconv(.c) c_int = null,
@@ -1455,10 +1455,10 @@ pub const PyGetSetDef = extern struct {
     closure: ?*anyopaque = null,
 
     comptime {
-        comp_assert.equalLayout(PyGetSetDef, c.PyGetSetDef);
+        comp_assert.equalLayout(GetSetDef, c.PyGetSetDef);
     }
 
-    pub const Sentinal: PyGetSetDef = .{
+    pub const Sentinal: GetSetDef = .{
         .name = null,
         .get = null,
         .set = null,
@@ -1466,7 +1466,7 @@ pub const PyGetSetDef = extern struct {
         .closure = null,
     };
 
-    pub fn toC(self: *PyGetSetDef) *c.PyGetSetDef {
+    pub fn toC(self: *GetSetDef) *c.PyGetSetDef {
         return @ptrCast(self);
     }
 };
@@ -1645,17 +1645,17 @@ pub fn WrapObject(
             if (@hasDecl(_vtable, "py_getset")) {
                 const structinfo = @typeInfo(@TypeOf(_vtable.py_getset)).@"struct";
                 const fields = structinfo.fields;
-                var py_getsetdef_list: [fields.len + 1]PyGetSetDef = .{PyGetSetDef.Sentinal} ** (fields.len + 1);
+                var py_getsetdef_list: [fields.len + 1]GetSetDef = .{GetSetDef.Sentinal} ** (fields.len + 1);
                 for (fields, 0..) |field, idx| {
                     // getsetdef_list has one more element (sentinel)
-                    const py_getsetdef: *PyGetSetDef = &py_getsetdef_list[idx];
+                    const py_getsetdef: *GetSetDef = &py_getsetdef_list[idx];
                     const getsetdef = @field(_vtable.py_getset, field.name);
-                    const GetSetDef = @TypeOf(getsetdef);
+                    const GetSetDef_ = @TypeOf(getsetdef);
                     py_getsetdef.name = getsetdef.name;
-                    if (@hasField(GetSetDef, "doc")) {
+                    if (@hasField(GetSetDef_, "doc")) {
                         py_getsetdef.doc = getsetdef.doc;
                     }
-                    if (@hasField(GetSetDef, "get")) {
+                    if (@hasField(GetSetDef_, "get")) {
                         const ReturnErrorUnion = @typeInfo(@TypeOf(getsetdef.get)).@"fn".return_type.?;
                         const ReturnValue = @typeInfo(ReturnErrorUnion).error_union.payload;
                         py_getsetdef.get = struct {
@@ -1667,7 +1667,7 @@ pub fn WrapObject(
                             }
                         }.py_get;
                     }
-                    if (@hasField(GetSetDef, "set")) {
+                    if (@hasField(GetSetDef_, "set")) {
                         const ValuePtr = @typeInfo(@TypeOf(getsetdef.set)).@"fn".params[1].type.?;
                         const ValueType = @typeInfo(ValuePtr).pointer.child;
                         py_getsetdef.set = struct {
@@ -1692,19 +1692,19 @@ pub fn WrapObject(
             if (@hasDecl(_vtable, "py_methods")) {
                 const structinfo = @typeInfo(@TypeOf(_vtable.py_methods)).@"struct";
                 const fields = structinfo.fields;
-                var py_methoddef_list: [fields.len + 1]PyMethodDef = .{PyMethodDef.Sentinal} ** (fields.len + 1);
+                var py_methoddef_list: [fields.len + 1]MethodDef = .{MethodDef.Sentinal} ** (fields.len + 1);
                 for (fields, 0..) |field, idx| {
                     // methoddef_list has one more element (sentinel)
-                    const py_methoddef: *PyMethodDef = &py_methoddef_list[idx];
+                    const py_methoddef: *MethodDef = &py_methoddef_list[idx];
                     const methoddef = @field(_vtable.py_methods, field.name);
-                    const MethodDef = @TypeOf(methoddef);
+                    const MethodDef_ = @TypeOf(methoddef);
                     py_methoddef.ml_name = methoddef.ml_name;
                     py_methoddef.ml_flags = methoddef.ml_flags;
-                    if (@hasField(MethodDef, "ml_doc")) {
+                    if (@hasField(MethodDef_, "ml_doc")) {
                         py_methoddef.ml_doc = methoddef.ml_doc;
                     }
                     const params = @typeInfo(@TypeOf(methoddef.ml_meth)).@"fn".params;
-                    if (py_methoddef.ml_flags == PyMethodDef.Flag.default) {
+                    if (py_methoddef.ml_flags == MethodDef_.Flag.default) {
                         const ArgsType = params[1].type.?;
                         py_methoddef.ml_meth = struct {
                             pub fn py_method(self_opt: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
@@ -1716,7 +1716,7 @@ pub fn WrapObject(
                                 return obj.toC();
                             }
                         }.py_method;
-                    } else if (py_methoddef.ml_flags == PyMethodDef.Flag.static) {
+                    } else if (py_methoddef.ml_flags == MethodDef.Flag.static) {
                         const ArgsType = params[0].type.?;
                         py_methoddef.ml_meth = struct {
                             pub fn py_method(_self_null: ?*c.PyObject, args_opt: ?*c.PyObject) callconv(.c) ?*c.PyObject {
@@ -1816,7 +1816,7 @@ pub const PyBuiltinExample = struct {
         .{
             .ml_name = "foo",
             .ml_meth = foo,
-            .ml_flags = PyMethodDef.Flag{ .VARARGS = true },
+            .ml_flags = MethodDef.Flag{ .VARARGS = true },
             .ml_doc = null,
         },
     };

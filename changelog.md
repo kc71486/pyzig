@@ -1,3 +1,13 @@
+## 0.5.0
+
+### changes
+* Change various type name:
+  * `PyModuleDef` -> `ModuleDef`
+  * `PyModuleDef_Base` -> `ModuleDefBase`
+  * `PyMemberDef` -> `MemberDef`
+  * `PyMethodDef` -> `MethodDef`
+  * `PyGetSetDef` -> `GetSetDef`
+
 ## 0.4.0
 
 ### removed stuffs
