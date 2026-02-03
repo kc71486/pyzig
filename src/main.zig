@@ -42,6 +42,10 @@ pub const Object = extern struct {
     /// Object metadata.
     ob_type: ?*TypeObject,
 
+    comptime {
+        comp_assert.equalLayout(Object, c.PyObject);
+    }
+
     pub fn init(ob_type: ?*TypeObject) Object {
         return .{
             .rc = .{ .ob_refcnt = 1 },
@@ -75,6 +79,10 @@ pub const PyObject_HEAD = @compileError("place 'ob_base: PyObject,' at the start
 pub const VarObject = extern struct {
     ob_base: Object,
     ob_size: isize,
+
+    comptime {
+        comp_assert.equalLayout(VarObject, c.PyVarObject);
+    }
 
     pub fn init(ob_type: ?*TypeObject, size: isize) VarObject {
         return .{
@@ -125,7 +133,7 @@ pub const TypeObject = extern struct {
     tp_getattro: c.getattrofunc = null,
     tp_setattro: c.setattrofunc = null,
     tp_as_buffer: ?[*]c.PyBufferProcs = null,
-    tp_flags: Flags = .DEFAULT,
+    tp_flags: c_ulong = @as(u32, @bitCast(Flags.DEFAULT)),
     tp_doc: ?[*:0]const u8 = null,
     tp_traverse: c.traverseproc = null,
     tp_clear: c.inquiry = null,
@@ -157,8 +165,14 @@ pub const TypeObject = extern struct {
     tp_vectorcall: c.vectorcallfunc = null,
     tp_watched: u8 = 0,
 
+    comptime {
+        comp_assert.equalLayout(TypeObject, c.PyTypeObject);
+    }
+
     pub const destructor: type = fn (?*c.PyObject) callconv(.c) void;
-    pub const Flags = packed struct(c_ulong) {
+
+    // c_ulong
+    pub const Flags = packed struct(u32) {
         _0: u1 = 0,
         STATIC_BUILTIN: bool = false,
         _2: u1 = 0,
@@ -270,12 +284,17 @@ pub fn Py_None() *NoneObject {
 /// least 1 digit. It may take more if the number is greater than 2^30.
 pub const LongObject = extern struct {
     ob_base: Object,
-    long_value: c._PyLongValue,
+    long_value: _PyLongValue,
 
     pub const _PyLongValue = extern struct {
         lv_tag: usize,
         ob_digit: [1]u32,
     };
+
+    comptime {
+        comp_assert.equalLayout(LongObject, c.PyLongObject);
+        comp_assert.equalLayout(_PyLongValue, c._PyLongValue);
+    }
 
     /// Make the object an int if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*LongObject {
@@ -379,6 +398,11 @@ pub const BoolObject = extern struct {
         ob_digit: [1]u32,
     };
 
+    comptime {
+        comp_assert.equalLayout(BoolObject, c.PyLongObject);
+        comp_assert.equalLayout(_PyLongValue, c._PyLongValue);
+    }
+
     /// Make the object an int if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*BoolObject {
         if (isBool(object)) {
@@ -451,6 +475,10 @@ pub const BoolObject = extern struct {
 pub const FloatObject = extern struct {
     ob_base: Object,
     ob_fval: f64,
+
+    comptime {
+        comp_assert.equalLayout(FloatObject, c.PyFloatObject);
+    }
 
     /// Make the object a float if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*FloatObject {
@@ -622,6 +650,10 @@ pub const ListObject = extern struct {
     ob_item: [*]*Object,
     allocated: isize,
 
+    comptime {
+        comp_assert.equalLayout(ListObject, c.PyListObject);
+    }
+
     /// Make the object a list if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*ListObject {
         if (isList(object)) {
@@ -757,6 +789,10 @@ pub const TupleObject = extern struct {
     ob_base: VarObject,
     ob_item: [1]*Object,
 
+    comptime {
+        comp_assert.equalLayout(TupleObject, c.PyTupleObject);
+    }
+
     /// Make the object a tuple if possible, otherwise set exception and return error.
     pub fn fromObject(object: *Object) TypeError!*TupleObject {
         if (isTuple(object)) {
@@ -877,6 +913,7 @@ pub const DictObject = extern struct {
     ma_version_tag: u64,
     ma_keys: ?*c.PyDictKeysObject,
     ma_values: ?*c.PyDictValues,
+
     const PyDictKeysObject = struct {
         dk_refcnt: isize,
         dk_log2_size: u8,
@@ -887,6 +924,7 @@ pub const DictObject = extern struct {
         dk_nentries: isize,
         dk_indices: [*c]c_char, // char is required to avoid strict aliasing.
     };
+
     const PyDictValues = struct {
         values: ?*[1]c.PyObject,
     };
@@ -1231,6 +1269,10 @@ pub const PyModuleDef = extern struct {
     m_clear: c.inquiry = null,
     m_free: ?*const fn (?*anyopaque) callconv(.c) void = null,
 
+    comptime {
+        comp_assert.equalLayout(PyModuleDef, c.PyModuleDef);
+    }
+
     pub fn init(
         name: [*:0]const u8,
         docs: ?[*:0]const u8,
@@ -1266,6 +1308,10 @@ pub const PyModuleDef_Base = extern struct {
     m_index: isize,
     m_copy: ?[*]Object,
 
+    comptime {
+        comp_assert.equalLayout(PyModuleDef_Base, c.PyModuleDef_Base);
+    }
+
     pub const init: PyModuleDef_Base = .{
         .ob_base = Object.init(null),
         .m_init = null,
@@ -1293,6 +1339,10 @@ pub const PyMemberDef = extern struct {
     offset: isize,
     flags: Flag,
     doc: ?[*:0]const u8,
+
+    comptime {
+        comp_assert.equalLayout(PyMemberDef, c.PyMemberDef);
+    }
 
     pub const Type = enum(i32) {
         /// i16 -> int
@@ -1366,6 +1416,10 @@ pub const PyMethodDef = extern struct {
     ml_flags: Flag,
     ml_doc: ?[*:0]const u8 = null,
 
+    comptime {
+        comp_assert.equalLayout(PyMethodDef, c.PyMethodDef);
+    }
+
     /// Method flag.
     pub const Flag = packed struct(i32) {
         VARARGS: bool = false,
@@ -1399,6 +1453,10 @@ pub const PyGetSetDef = extern struct {
     set: ?*const fn (?*c.PyObject, [*c]c.PyObject, ?*anyopaque) callconv(.c) c_int = null,
     doc: ?[*:0]const u8 = null,
     closure: ?*anyopaque = null,
+
+    comptime {
+        comp_assert.equalLayout(PyGetSetDef, c.PyGetSetDef);
+    }
 
     pub const Sentinal: PyGetSetDef = .{
         .name = null,
@@ -1533,7 +1591,7 @@ pub fn WrapObject(
                 .tp_doc = type_obj_.tp_doc,
                 .tp_basicsize = @sizeOf(Self),
                 .tp_itemsize = 0,
-                .tp_flags = type_obj_.tp_flags,
+                .tp_flags = @as(u32, @bitCast(type_obj_.tp_flags)),
                 .tp_members = type_obj_.tp_members,
             };
             if (@hasDecl(_vtable, "py_new")) {
@@ -2169,3 +2227,5 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+
+const comp_assert = @import("comp_assert.zig");

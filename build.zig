@@ -11,7 +11,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize_release,
     });
-    translate_c.addIncludePath(b.path("include"));
+    if (target.result.os.tag == .windows) {
+        translate_c.addIncludePath(b.path("include"));
+    } else {
+        translate_c.addSystemIncludePath(.{
+            .cwd_relative = "/usr/include/python3.12/",
+        });
+    }
+    // translate_c.addIncludePath(b.path("include"));
     const module_c = translate_c.createModule();
 
     // python ffi module.
@@ -21,8 +28,22 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     module_py.addImport("c", module_c);
-    module_py.addLibraryPath(b.path("lib"));
-    module_py.linkSystemLibrary("python312", .{});
+    if (target.result.os.tag == .windows) {
+        module_py.addLibraryPath(b.path("lib"));
+        module_py.linkSystemLibrary("python312", .{});
+    } else {
+        module_py.linkSystemLibrary("python3.12", .{});
+    }
+
+    const test_test = b.addTest(.{
+        .name = "test",
+        .root_module = module_py,
+    });
+
+    const run_test = b.addRunArtifact(test_test);
+
+    const step_test = b.step("test", "Compile all examples and run all tests");
+    step_test.dependOn(&run_test.step);
 }
 
 const std = @import("std");
