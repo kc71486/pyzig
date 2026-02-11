@@ -442,24 +442,24 @@ pub const BoolObject = extern struct {
     }
 
     /// The Python True object. This object is immortal (python 3.12+).
-    pub fn Py_True() *BoolObject {
+    pub fn true_() *BoolObject {
         return @ptrCast(&_Py_TrueStruct);
     }
 
     /// The Python False object. This object is immortal (python 3.12+).
-    pub fn Py_False() *BoolObject {
+    pub fn false_() *BoolObject {
         return @ptrCast(&_Py_FalseStruct);
     }
 
     /// Returns a new reference.
     pub fn fromBool(v: bool) *BoolObject {
         if (v) {
-            const t = Py_True();
-            IncRef(t.toObject());
+            const t = true_();
+            incRef(t.toObject());
             return t;
         } else {
-            const f = Py_False();
-            IncRef(f.toObject());
+            const f = false_();
+            incRef(f.toObject());
             return f;
         }
     }
@@ -703,7 +703,7 @@ pub const ListObject = extern struct {
     /// Insert a reference to object obj at position idx of the tuple, set
     /// exception and return IndexError on failure.
     pub fn setItem(self: *ListObject, idx: isize, obj: *Object) IndexError!void {
-        IncRef(obj); // c.PyList_SetItem steal reference
+        incRef(obj); // c.PyList_SetItem steal reference
         const res: i32 = c.PyList_SetItem(self.toObject().toC(), idx, obj.toC());
         if (res < 0) {
             return IndexError.ListIndex;
@@ -841,7 +841,7 @@ pub const TupleObject = extern struct {
     /// Insert a reference to object obj at position idx of the tuple, set
     /// exception and return IndexError on failure.
     pub fn setItem(self: *TupleObject, idx: isize, obj: *Object) IndexError!void {
-        IncRef(obj); // c.PyTuple_SetItem steal reference
+        incRef(obj); // c.PyTuple_SetItem steal reference
         const res: i32 = c.PyTuple_SetItem(self.toObject().toC(), idx, obj.toC());
         if (res < 0) {
             return IndexError.TupleIndex;
@@ -1099,7 +1099,7 @@ pub const Builtin = struct {
 
     pub fn print(obj: *Object) BuiltinError!void {
         const obj_str: *UnicodeObject = try str(obj);
-        defer DecRef(obj_str.toObject());
+        defer decRef(obj_str.toObject());
         const str_ = try obj_str.toOwnedSlice(global_gpa);
         defer global_gpa.free(str_);
         var stdout_buffer: [64]u8 = undefined;
@@ -1490,7 +1490,7 @@ pub fn parseArgs(args_tuple: *TupleObject, T: type) ArgsError!T {
     inline for (fields, 0..) |field, idx| {
         const field_type = @typeInfo(field.type).pointer.child;
         const item_obj: *Object = try args_tuple.getItem(idx);
-        errdefer DecRef(item_obj);
+        errdefer decRef(item_obj);
         @field(out_tuple, field.name) = try field_type.fromObject(item_obj);
     }
     return out_tuple;
@@ -1511,7 +1511,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
         const key: UnicodeObject = UnicodeObject.fromString(key_str);
         const item_opt: ?*Object = try args_dict.getItem(key.toObject());
         if (item_opt) |item_obj| {
-            errdefer DecRef(item_obj);
+            errdefer decRef(item_obj);
             const field_type = @typeInfo(field.type).pointer.child;
             @field(out_tuple, field.name) = try field_type.fromObject(item_obj);
         } else {
@@ -1532,15 +1532,15 @@ pub fn buildArgs(args: anytype) MemoryError!*TupleObject {
 // ========================================================================= //
 // Memory management
 
-pub fn IncRef(obj: *Object) void {
+pub fn incRef(obj: *Object) void {
     c.Py_IncRef(obj.toC());
 }
 
-pub fn DecRef(obj: *Object) void {
+pub fn decRef(obj: *Object) void {
     c.Py_DecRef(obj.toC());
 }
 
-pub fn XDecRef(obj_opt: ?*Object) void {
+pub fn xDecRef(obj_opt: ?*Object) void {
     if (obj_opt) |obj| {
         c.Py_IncRef(obj.toC());
     }
@@ -1852,7 +1852,7 @@ pub fn wrapPyCFunctionDefault(inner_fn: anytype) PyCFunction {
 /// Returns a new reference.
 pub fn import(name: [*:0]const u8) ImportError!*Object {
     const name_py = UnicodeObject.fromString(name);
-    defer DecRef(name_py.toObject());
+    defer decRef(name_py.toObject());
     const c_module = c.PyImport_Import(name_py.toObject().toC()) orelse return ImportError.Import;
     return Object.fromC(c_module);
 }
@@ -1860,7 +1860,7 @@ pub fn import(name: [*:0]const u8) ImportError!*Object {
 /// Returns a new reference.
 pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Object {
     const attr_name_py = UnicodeObject.fromString(attr_name);
-    defer DecRef(attr_name_py.toObject());
+    defer decRef(attr_name_py.toObject());
     const c_attr = c.PyObject_GetAttr(obj.toC(), attr_name_py.toObject().toC()) orelse return AttributeError.Attribute;
     return Object.fromC(c_attr);
 }
@@ -1870,15 +1870,15 @@ pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Obj
 /// Returns a new reference.
 pub fn call(callable: *Object, args: anytype) CallError!*Object {
     const args_obj: *TupleObject = try TupleObject.fromTuple(args);
-    defer DecRef(args_obj.toObject());
+    defer decRef(args_obj.toObject());
     return try callObject(callable, args_obj);
 }
 
 pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*Object {
     const args_obj: *TupleObject = try TupleObject.fromTuple(args);
-    defer DecRef(args_obj.toObject());
+    defer decRef(args_obj.toObject());
     const kwargs_obj: *DictObject = try DictObject.fromStruct(kwargs);
-    defer DecRef(kwargs_obj.toObject());
+    defer decRef(kwargs_obj.toObject());
     return try callObjectKwargs(callable, args_obj, kwargs_obj);
 }
 
@@ -1887,9 +1887,9 @@ pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*
 /// Returns a new reference.
 pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: anytype) CallError!*Object {
     const args_obj: *TupleObject = try TupleObject.fromTuple(args);
-    defer DecRef(args_obj.toObject());
+    defer decRef(args_obj.toObject());
     const method: *Object = try getAttrString(AnyObject, name);
-    defer DecRef(method);
+    defer decRef(method);
     return try callObject(method, args_obj);
 }
 
@@ -1898,21 +1898,21 @@ pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: anytype) 
 /// Returns a new reference.
 pub fn callMethod(obj: *Object, name: [*:0]const u8, args: anytype) CallError!*Object {
     const method: *Object = try getAttrString(obj, name);
-    defer DecRef(method);
+    defer decRef(method);
     // obj is not in args
     const args_obj: *TupleObject = try TupleObject.fromTuple(args);
-    defer DecRef(args_obj.toObject());
+    defer decRef(args_obj.toObject());
     return try callObject(method, args_obj);
 }
 
 pub fn callMethodKwargs(obj: *Object, name: [*:0]const u8, args: anytype, kwargs: anytype) CallError!*Object {
     const method: *Object = try getAttrString(obj, name);
-    defer DecRef(method);
+    defer decRef(method);
     // obj is not in args
     const args_obj: *TupleObject = try .fromTuple(args);
-    defer DecRef(args_obj.toObject());
+    defer decRef(args_obj.toObject());
     const kwargs_obj: *DictObject = try .fromStruct(kwargs);
-    defer DecRef(kwargs_obj.toObject());
+    defer decRef(kwargs_obj.toObject());
     return try callObjectKwargs(method, args_obj, kwargs_obj);
 }
 
@@ -1955,7 +1955,7 @@ pub fn callObjectKwargs(callable: *Object, args: *TupleObject, kwargs: *DictObje
 /// call(type_obj.toObject(), .{}) or callObject(type_obj.toObject(), args)
 pub fn callNew(T: type, type_obj: *TypeObject) MemoryTypeError!*T {
     const new_args: *TupleObject = try TupleObject.new(0);
-    defer DecRef(new_args.toObject());
+    defer decRef(new_args.toObject());
     const obj_c: *c.PyObject = type_obj.tp_new.?(type_obj.toC(), new_args.toObject().toC(), null);
     return try T.fromObject(.fromC(obj_c));
 }
@@ -2016,7 +2016,7 @@ fn listFromNdarrayInner(ndarray: anytype, outlist: *ListObject) ListConversionEr
             },
             else => @compileError("type not allowed"),
         };
-        defer DecRef(item_obj);
+        defer decRef(item_obj);
         outlist.setItem(@intCast(idx), item_obj) catch unreachable;
     }
 }
@@ -2051,7 +2051,7 @@ fn listFromStrArrayInner(str_array: anytype, outlist: *ListObject) ListConversio
             },
             else => @compileError("type not allowed"),
         };
-        defer DecRef(item_obj);
+        defer decRef(item_obj);
         outlist.setItem(@intCast(idx), item_obj) catch unreachable;
     }
 }
