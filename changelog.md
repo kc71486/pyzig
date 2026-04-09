@@ -1,3 +1,8 @@
+## 0.6.0
+
+### changes
+* `sysinclude` in build.zig now has a worse default, provide it with `-Dsysinclude` to fix it.
+
 ## 0.5.0
 
 ### changes

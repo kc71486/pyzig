@@ -8,13 +8,15 @@ pub fn build(b: *std.Build) !void {
     const o_sys_include: ?[]const u8 = b.option([]const u8, "sysinclude", "System include path override");
     const o_lib_path: ?[]const u8 = b.option([]const u8, "libpath", "Library path override");
 
+    // default step
+    const step_install = b.getInstallStep();
+
     // option refine
     const sys_include: []const u8 = o_sys_include orelse
-        if (target.result.os.tag == .windows) blk: {
-            const home: []const u8 = try std.process.getEnvVarOwned(b.allocator, "USERPROFILE");
-            defer b.allocator.free(home);
-            break :blk try std.fs.path.join(b.allocator, &.{ home, "Appdata\\Local\\Programs\\Python\\Python312\\include" });
-        } else "/usr/include/python3.12/";
+        if (target.result.os.tag == .windows)
+            "C:\\Users\\user\\Appdata\\Local\\Programs\\Python\\Python312\\include"
+        else
+            "/usr/include/python3.12/";
 
     // python ffi cimport module, requires release build.
     // debug build includes symbol that doesn't exist in python312.lib.
@@ -51,6 +53,7 @@ pub fn build(b: *std.Build) !void {
 
     const step_test = b.step("test", "Compile all examples and run all tests");
     step_test.dependOn(&run_test.step);
+    step_test.dependOn(step_install);
 }
 
 const std = @import("std");
