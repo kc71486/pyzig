@@ -2,7 +2,9 @@ pub fn build(b: *std.Build) !void {
     // hyperparams
     const target = b.standardTargetOptions(.{});
     const optimize: std.builtin.OptimizeMode = b.standardOptimizeOption(.{});
-    const optimize_release: std.builtin.OptimizeMode = if (optimize == .Debug) .ReleaseSafe else optimize;
+    // .Debug generates incompatible functions against python dll
+    // .ReleaseSafe (and ReleaseSafe only) incorrectly expands __va_arg_pack in zig 0.16.0-dev.3133+5ec8e45f3
+    const optimize_c: std.builtin.OptimizeMode = if (optimize == .Debug or optimize == .ReleaseSafe) .ReleaseFast else optimize;
 
     // options
     const o_sys_include: ?[]const u8 = b.option([]const u8, "sysinclude", "System include path override");
@@ -23,7 +25,7 @@ pub fn build(b: *std.Build) !void {
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/py_headers.c"),
         .target = target,
-        .optimize = optimize_release,
+        .optimize = optimize_c,
     });
     translate_c.addIncludePath(.{ .cwd_relative = sys_include });
     // translate_c.addIncludePath(b.path("include"));
