@@ -366,7 +366,7 @@ pub const LongObject = extern struct {
                     break :blk c.PyLong_AsUnsignedLongLong;
             }
         };
-        const Int64: type = @Type(.{ .int = .{ .signedness = int_info.signedness, .bits = 64 } });
+        const Int64: type = if (int_info.signedness == .signed) i64 else u64;
         const intvalue: Int64 = convert_fn(self.toObject().toC());
         if (@as(i64, @bitCast(intvalue)) == -1 and Err.occurred() != null) {
             return NumericError.Long;
