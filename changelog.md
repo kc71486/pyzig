@@ -3,6 +3,13 @@
 ### changes
 * `sysinclude` in build.zig now has a worse default, provide it with `-Dsysinclude` to fix it.
 
+### new stuffs
+* Add `Builtin.list`.
+* Add `DictObject.setItemString`.
+
+### bug fixes
+* Add various `defer` for cleanup.
+
 ## 0.5.0
 
 ### changes

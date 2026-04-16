@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) !void {
     const optimize: std.builtin.OptimizeMode = b.standardOptimizeOption(.{});
     // .Debug generates incompatible functions against python dll
     // .ReleaseSafe (and ReleaseSafe only) incorrectly expands __va_arg_pack in zig 0.16.0-dev.3133+5ec8e45f3
-    const optimize_c: std.builtin.OptimizeMode = if (optimize == .Debug or optimize == .ReleaseSafe) .ReleaseFast else optimize;
+    const optimize_c: std.builtin.OptimizeMode = if (optimize == .Debug or optimize == .ReleaseSafe) .ReleaseSafe else optimize;
 
     // options
     const o_sys_include: ?[]const u8 = b.option([]const u8, "sysinclude", "System include path override");

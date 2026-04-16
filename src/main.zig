@@ -561,8 +561,7 @@ pub const NumericObject = opaque {
     }
 };
 
-/// Unicode object, represent python normal string. Note: don't rely on the
-/// layout, the actual layout might differ.
+/// Unicode object, represent python normal string.
 pub const UnicodeObject = extern struct {
     _base: PyCompactUnicodeObject,
     data: extern union {
@@ -582,14 +581,16 @@ pub const UnicodeObject = extern struct {
         ob_base: Object,
         length: isize,
         hash: isize,
-        state: packed struct(u32) {
+        state: State,
+
+        pub const State = packed struct(u32) {
             interned: u2,
             kind: u3,
             compact: u1,
             ascii: u1,
             statically_allocated: u1,
             _8: u24,
-        },
+        };
     };
 
     /// Make the object a str if possible, otherwise set exception and return
@@ -905,8 +906,7 @@ pub const TupleObject = extern struct {
     }
 };
 
-/// Dict object, represent python dict. Note: don't rely on the layout, the
-/// actual layout might differ.
+/// Dict object, represent python dict.
 pub const DictObject = extern struct {
     ob_base: Object,
     ma_used: isize,
@@ -914,6 +914,7 @@ pub const DictObject = extern struct {
     ma_keys: ?*c.PyDictKeysObject,
     ma_values: ?*c.PyDictValues,
 
+    // Note: The type is opaque in header
     const PyDictKeysObject = struct {
         dk_refcnt: isize,
         dk_log2_size: u8,
@@ -925,6 +926,7 @@ pub const DictObject = extern struct {
         dk_indices: [*c]c_char, // char is required to avoid strict aliasing.
     };
 
+    // Note: The type is opaque in header
     const PyDictValues = struct {
         values: ?*[1]c.PyObject,
     };
@@ -987,6 +989,15 @@ pub const DictObject = extern struct {
         }
     }
 
+    /// Insert value into the with utf-8 encoded key.
+    pub fn setItemString(self: *DictObject, key: [*:0]const u8, value: *Object) void {
+        const key_obj: *UnicodeObject = .fromString(key);
+        defer decRef(key_obj.toObject());
+        // c.PyDict_SetItem doesn't steal reference
+        const result: i32 = c.PyDict_SetItem(self.toObject().toC(), key_obj.toObject().toC(), value.toC());
+        assert(result == 0); // UnicodeObject is hashable
+    }
+
     /// Get item by key, doesn't increment reference count. Return null if not
     /// found. Return DictError if keys cannot hash or compare equal.
     pub fn getItem(self: *DictObject, key: *Object) DictError!?*Object {
@@ -1004,6 +1015,7 @@ pub const DictObject = extern struct {
     /// found. Return DictError if keys cannot hash or compare equal.
     pub fn getItemString(self: *DictObject, key: [*:0]const u8) DictError!?*Object {
         const key_obj: *UnicodeObject = .fromString(key);
+        defer decRef(key_obj.toObject());
         return try self.getItem(key_obj.toObject());
     }
 
@@ -1012,6 +1024,7 @@ pub const DictObject = extern struct {
         const dict_obj: *DictObject = try .new();
         inline for (fields) |field| {
             const key: *UnicodeObject = .fromString(field.name);
+            defer decRef(key.toObject());
             const item = @field(_struct, field.name);
             dict_obj.setItem(key.toObject(), item.toObject()) catch unreachable;
         }
@@ -1077,6 +1090,14 @@ pub const Builtin = struct {
         return DictObject.fromObject(builtin_obj) catch unreachable;
     }
 
+    // // example of some arbitrary builtin
+    // pub fn sorted(obj: *Object) *Object {
+    //     const builtins_: *DictObject = builtins();
+    //     const sorted_fn: *Object = builtins_.getItemString("sorted") catch unreachable orelse unreachable;
+    //     const sorted_obj: *Object = call(sorted_fn, .{obj}) catch return BuiltinError.PyType;
+    //     return sorted_obj;
+    // }
+
     pub fn locals() *Object {
         return Object.fromC(c.PyEval_GetLocals());
     }
@@ -1091,6 +1112,12 @@ pub const Builtin = struct {
         return UnicodeObject.fromObject(.fromC(result)) catch unreachable;
     }
 
+    pub fn list(obj: *Object) BuiltinError!*ListObject {
+        const result: *c.PyObject = c.PySequence_List(obj.toC()) orelse
+            return BuiltinError.PyType;
+        return ListObject.fromObject(.fromC(result)) catch unreachable;
+    }
+
     pub fn getItem(obj: *Object, key: *Object) BuiltinError!*Object {
         const result: *c.PyObject = c.PyObject_GetItem(obj.toC(), key.toC()) orelse
             return BuiltinError.GetItem;
@@ -1100,7 +1127,7 @@ pub const Builtin = struct {
     pub fn print(obj: *Object) BuiltinError!void {
         const obj_str: *UnicodeObject = try str(obj);
         defer decRef(obj_str.toObject());
-        const str_ = try obj_str.toOwnedSlice(global_gpa);
+        const str_: []u8 = try obj_str.toOwnedSlice(global_gpa);
         defer global_gpa.free(str_);
         var stdout_buffer: [64]u8 = undefined;
         var stdout_writer: std.fs.File.Writer = std.fs.File.stdout().writer(&stdout_buffer);
@@ -1509,6 +1536,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
     var out_tuple: T = undefined;
     inline for (fields, keys) |field, key_str| {
         const key: UnicodeObject = UnicodeObject.fromString(key_str);
+        defer decRef(key.toObject());
         const item_opt: ?*Object = try args_dict.getItem(key.toObject());
         if (item_opt) |item_obj| {
             errdefer decRef(item_obj);
@@ -1851,7 +1879,7 @@ pub fn wrapPyCFunctionDefault(inner_fn: anytype) PyCFunction {
 
 /// Returns a new reference.
 pub fn import(name: [*:0]const u8) ImportError!*Object {
-    const name_py = UnicodeObject.fromString(name);
+    const name_py: *UnicodeObject = .fromString(name);
     defer decRef(name_py.toObject());
     const c_module = c.PyImport_Import(name_py.toObject().toC()) orelse return ImportError.Import;
     return Object.fromC(c_module);
@@ -1859,7 +1887,7 @@ pub fn import(name: [*:0]const u8) ImportError!*Object {
 
 /// Returns a new reference.
 pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Object {
-    const attr_name_py = UnicodeObject.fromString(attr_name);
+    const attr_name_py: *UnicodeObject = .fromString(attr_name);
     defer decRef(attr_name_py.toObject());
     const c_attr = c.PyObject_GetAttr(obj.toC(), attr_name_py.toObject().toC()) orelse return AttributeError.Attribute;
     return Object.fromC(c_attr);
@@ -1869,15 +1897,15 @@ pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Obj
 ///
 /// Returns a new reference.
 pub fn call(callable: *Object, args: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try TupleObject.fromTuple(args);
+    const args_obj: *TupleObject = try .fromTuple(args);
     defer decRef(args_obj.toObject());
     return try callObject(callable, args_obj);
 }
 
 pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try TupleObject.fromTuple(args);
+    const args_obj: *TupleObject = try .fromTuple(args);
     defer decRef(args_obj.toObject());
-    const kwargs_obj: *DictObject = try DictObject.fromStruct(kwargs);
+    const kwargs_obj: *DictObject = try .fromStruct(kwargs);
     defer decRef(kwargs_obj.toObject());
     return try callObjectKwargs(callable, args_obj, kwargs_obj);
 }
@@ -1886,7 +1914,7 @@ pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*
 ///
 /// Returns a new reference.
 pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try TupleObject.fromTuple(args);
+    const args_obj: *TupleObject = try .fromTuple(args);
     defer decRef(args_obj.toObject());
     const method: *Object = try getAttrString(AnyObject, name);
     defer decRef(method);
@@ -1900,7 +1928,7 @@ pub fn callMethod(obj: *Object, name: [*:0]const u8, args: anytype) CallError!*O
     const method: *Object = try getAttrString(obj, name);
     defer decRef(method);
     // obj is not in args
-    const args_obj: *TupleObject = try TupleObject.fromTuple(args);
+    const args_obj: *TupleObject = try .fromTuple(args);
     defer decRef(args_obj.toObject());
     return try callObject(method, args_obj);
 }
@@ -2195,7 +2223,7 @@ pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
 pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
 /// Builtin error.
-pub const BuiltinError = UnicodeError || MemoryError || error{ Str, GetItem, Print };
+pub const BuiltinError = UnicodeError || MemoryError || TypeError || error{ Str, GetItem, Print };
 /// Interpreter error.
 pub const InterpreterError = error{Finalize};
 /// Custom error generated from Err.customError()
