@@ -1,19 +1,26 @@
 ## 0.6.0
 
+### breaking changes
+* `call` and its variant now accepts `[]*const Object` instead of tuple or struct.
+  * Migration guide: `call(obj, .{arg1, arg2})` -> `call(obj, &.{arg1, arg2})`,  
+  `callKwargs(obj, .{arg1, arg2}, .{.kw1 = arg3})` -> `callKwargs(obj, &.{arg1, arg2}, .{.kw1 = arg3})`.
+  * `parseArgs` unchanged, it still accepts tuple/struct of any Object compatible type.
+
 ### new stuffs
 * Add `Builtin.list`.
 * Add `DictObject.setItemString`.
+* Add `TupleObject.fromSlice`.
 
 ### changes
-* `sysinclude` in build.zig now has a worse default, provide it with `-Dsysinclude` to fix it.
 * It is now compatible with 0.16.0.
+* `ListObject.fromSlice` now accepts const slice.
 
 ### bug fixes
 * Add various `defer` for cleanup.
 
 ## 0.5.0
 
-### changes
+### breaking changes
 * Change various type name:
   * `PyModuleDef` -> `ModuleDef`
   * `PyModuleDef_Base` -> `ModuleDefBase`
@@ -22,6 +29,13 @@
   * `PyGetSetDef` -> `GetSetDef`
 
 ## 0.4.0
+
+### breaking changes
+* Change `ListObject.fromSlice` to only accept object slice, add `ListObject.fromSliceT` for original
+purpose.
+* Change `TupleObject.fromTuple` to only accept object slice, add `TupleObject.fromTupleT` for original
+purpose.
+* `call` and its variant now only accepts `Object` in its tuple or struct.
 
 ### removed stuffs
 * Remove `callNoArgs`.
@@ -35,11 +49,6 @@
 
 ### changes
 * Change various argument name: `allocator` -> `gpa`.
-* Change `ListObject.fromSlice` to only accept object slice, add `ListObject.fromSliceT` for original
-purpose.
-* Change `TupleObject.fromTuple` to only accept object slice, add `TupleObject.fromTupleT` for original
-purpose.
-* `py.call` and its variant now only accepts `Object` in its tuple or struct.
 
 ### bug fixes
 * Add various `defer` and `errdefer` for cleanup.

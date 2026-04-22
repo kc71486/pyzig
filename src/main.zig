@@ -740,7 +740,7 @@ pub const ListObject = extern struct {
     }
 
     /// Turns slice of object into ListObject.
-    pub fn fromSlice(slice: []*Object) MemoryError!*ListObject {
+    pub fn fromSlice(slice: []const *Object) MemoryError!*ListObject {
         const list_obj: *ListObject = try ListObject.new(slice.len);
         for (slice, 0..) |item, idx| {
             list_obj.setItem(@intCast(idx), item) catch unreachable;
@@ -749,7 +749,7 @@ pub const ListObject = extern struct {
     }
 
     /// Turns slice of pointer of type T into ListObject.
-    pub fn fromSliceT(T: type, slice: []*T) MemoryError!*ListObject {
+    pub fn fromSliceT(T: type, slice: []const *T) MemoryError!*ListObject {
         const list_obj: *ListObject = try ListObject.new(slice.len);
         for (slice, 0..) |item, idx| {
             list_obj.setItem(@intCast(idx), item.toObject()) catch unreachable;
@@ -892,6 +892,15 @@ pub const TupleObject = extern struct {
             @field(out_tuple, field.name) = self.getItem(idx) catch unreachable;
         }
         return out_tuple;
+    }
+
+    /// Turns slice of object into TupleObject.
+    pub fn fromSlice(slice: []const *Object) MemoryError!*TupleObject {
+        const tuple_obj: *TupleObject = try TupleObject.new(slice.len);
+        for (slice, 0..) |item, idx| {
+            tuple_obj.setItem(@intCast(idx), item) catch unreachable;
+        }
+        return tuple_obj;
     }
 
     /// Turns TupleObject into array.
@@ -1896,14 +1905,14 @@ pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Obj
 /// Equivilent to `callable(*args)`.
 ///
 /// Returns a new reference.
-pub fn call(callable: *Object, args: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try .fromTuple(args);
+pub fn call(callable: *Object, args: []const *Object) CallError!*Object {
+    const args_obj: *TupleObject = try .fromSlice(args);
     defer decRef(args_obj.toObject());
     return try callObject(callable, args_obj);
 }
 
-pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try .fromTuple(args);
+pub fn callKwargs(callable: *Object, args: []const *Object, kwargs: anytype) CallError!*Object {
+    const args_obj: *TupleObject = try .fromSlice(args);
     defer decRef(args_obj.toObject());
     const kwargs_obj: *DictObject = try .fromStruct(kwargs);
     defer decRef(kwargs_obj.toObject());
@@ -1913,8 +1922,8 @@ pub fn callKwargs(callable: *Object, args: anytype, kwargs: anytype) CallError!*
 /// Equivilent to `AnyObject.name(*args)`.
 ///
 /// Returns a new reference.
-pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: anytype) CallError!*Object {
-    const args_obj: *TupleObject = try .fromTuple(args);
+pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: []const *Object) CallError!*Object {
+    const args_obj: *TupleObject = try .fromSlice(args);
     defer decRef(args_obj.toObject());
     const method: *Object = try getAttrString(AnyObject, name);
     defer decRef(method);
@@ -1924,20 +1933,20 @@ pub fn callStaticMethod(AnyObject: *Object, name: [*:0]const u8, args: anytype) 
 /// Equivilent to `obj.name(*args)` or `AnyObject.name(obj, *args)`.
 ///
 /// Returns a new reference.
-pub fn callMethod(obj: *Object, name: [*:0]const u8, args: anytype) CallError!*Object {
+pub fn callMethod(obj: *Object, name: [*:0]const u8, args: []const *Object) CallError!*Object {
     const method: *Object = try getAttrString(obj, name);
     defer decRef(method);
     // obj is not in args
-    const args_obj: *TupleObject = try .fromTuple(args);
+    const args_obj: *TupleObject = try .fromSlice(args);
     defer decRef(args_obj.toObject());
     return try callObject(method, args_obj);
 }
 
-pub fn callMethodKwargs(obj: *Object, name: [*:0]const u8, args: anytype, kwargs: anytype) CallError!*Object {
+pub fn callMethodKwargs(obj: *Object, name: [*:0]const u8, args: []const *Object, kwargs: anytype) CallError!*Object {
     const method: *Object = try getAttrString(obj, name);
     defer decRef(method);
     // obj is not in args
-    const args_obj: *TupleObject = try .fromTuple(args);
+    const args_obj: *TupleObject = try .fromSlice(args);
     defer decRef(args_obj.toObject());
     const kwargs_obj: *DictObject = try .fromStruct(kwargs);
     defer decRef(kwargs_obj.toObject());
