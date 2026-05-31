@@ -1,7 +1,7 @@
 .{
     .name = .pyzig,
     .fingerprint = 0x17483157b9956b88,
-    .version = "0.6.0-dev.5",
+    .version = "0.6.0-dev.6",
     .minimum_zig_version = "0.15.1",
     .paths = .{
         "include",
@@ -11,5 +11,11 @@
         // "example",
         "build.zig",
         "build.zig.zon",
+    },
+    .dependencies = .{
+        .translate_c = .{ // targets 0.16.0
+            .url = "git+https://codeberg.org/ziglang/translate-c?ref=1.0.0#42f630117deffd5318b4a6ceffbd366dd0af8cee",
+            .hash = "translate_c-1.0.0-Q_BUWo75BgBmrtWsRz9QVUZlzvsSUUe_IIXD9vmWguhX",
+        },
     },
 }

@@ -1,6 +1,6 @@
 ## pyzig
 
-Binds python 3.12 with zig 0.15.1.
+Binds python 3.12 with zig 0.16.0.
 
 ### Disclaimer
 
@@ -8,7 +8,7 @@ Binds python 3.12 with zig 0.15.1.
 * The library might have some bugs, use with caution.
 * This only works with python 3.12.x release version, python < 3.12 will cause some issues.
   * This package make use of immortal object (added in python 3.12), using python < 3.12 will cause some unwanted memory leaks.
-* This is written in zig 0.15.1, any other major version is not guarantee to work.
+* This is written in zig 0.16.0, any other major version is not guarantee to work.
   * Some functions that uses `std.io.Writer` will not work in 0.14.1.
     * Functions in question: `Builtin.print`.
 

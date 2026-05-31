@@ -1,3 +1,5 @@
 .zig-cache
 example/.zig-cache
 example/zig-out
+# should (mostly) be stored in dependent package
+zig-pkg

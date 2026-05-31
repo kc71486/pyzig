@@ -1,3 +1,6 @@
+// dependency translate_c build.zig
+const Translator = @import("translate_c").Translator;
+
 pub fn build(b: *std.Build) !void {
     // hyperparams
     const target = b.standardTargetOptions(.{});
@@ -21,16 +24,16 @@ pub fn build(b: *std.Build) !void {
             break :blk try std.fs.path.join(b.allocator, &.{ home, "Appdata\\Local\\Programs\\Python\\Python312\\include" });
         } else "/usr/include/python3.12/";
 
+    // Dependency translate_c
     // python ffi cimport module, requires release build.
     // debug build includes symbol that doesn't exist in python312.lib.
-    const translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("src/py_headers.c"),
+    const translate_c = b.dependency("translate_c", .{});
+    const translator: Translator = .init(translate_c, .{
+        .c_source_file = b.path("src/py_headers.c"),
         .target = target,
         .optimize = optimize_c,
     });
-    translate_c.addIncludePath(.{ .cwd_relative = sys_include });
-    // translate_c.addIncludePath(b.path("include"));
-    const module_c = translate_c.createModule();
+    translator.addIncludePath(.{ .cwd_relative = sys_include });
 
     // python ffi module.
     const module_py = b.addModule("py", .{
@@ -38,7 +41,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    module_py.addImport("c", module_c);
+    module_py.addImport("c", translator.mod);
     if (o_lib_path) |lib_path| module_py.addLibraryPath(.{ .cwd_relative = lib_path });
     // module_py.addLibraryPath(b.path("lib"));
     if (target.result.os.tag == .windows) {

@@ -12,7 +12,7 @@
 * Add `TupleObject.fromSlice`.
 
 ### changes
-* It is now compatible with 0.16.0.
+* It is now compiled with 0.16.0, with 0.15.x compatibility maintained.
 * `ListObject.fromSlice` now accepts const slice.
 
 ### bug fixes
