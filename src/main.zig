@@ -1139,10 +1139,18 @@ pub const Builtin = struct {
         const str_: []u8 = try obj_str.toOwnedSlice(global_gpa);
         defer global_gpa.free(str_);
         var stdout_buffer: [64]u8 = undefined;
-        var stdout_writer: std.fs.File.Writer = std.fs.File.stdout().writer(&stdout_buffer);
-        var stdout: *std.io.Writer = &stdout_writer.interface;
-        stdout.print("{s}\n", .{str_}) catch return BuiltinError.Print;
-        stdout.flush() catch return BuiltinError.Print;
+        if (comptime builtin.zig_version.order(zig_0_16) != .lt) {
+            var threaded: std.Io.Threaded = .init_single_threaded;
+            var stdout_writer: std.Io.File.Writer = std.Io.File.stdout().writer(threaded.io(), &stdout_buffer);
+            var stdout: *std.Io.Writer = &stdout_writer.interface;
+            stdout.print("{s}\n", .{str_}) catch return BuiltinError.Print;
+            stdout.flush() catch return BuiltinError.Print;
+        } else {
+            var stdout_writer: std.fs.File.Writer = std.fs.File.stdout().writer(&stdout_buffer);
+            var stdout: *std.Io.Writer = &stdout_writer.interface;
+            stdout.print("{s}\n", .{str_}) catch return BuiltinError.Print;
+            stdout.flush() catch return BuiltinError.Print;
+        }
     }
 
     /// Equivilent to python's `type(obj)`, returns a pointer of type `*TypeObject`.
@@ -2252,6 +2260,12 @@ const global_gpa: Allocator = gpa: {
     }
     break :gpa std.heap.smp_allocator;
 };
+
+// ========================================================================= //
+// zig versions
+
+const zig_0_15: std.SemanticVersion = .{ .major = 0, .minor = 15, .patch = 1 };
+const zig_0_16: std.SemanticVersion = .{ .major = 0, .minor = 16, .patch = 0 };
 
 // ========================================================================= //
 // Imports
