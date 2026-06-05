@@ -5,11 +5,18 @@
   * Migration guide: `call(obj, .{arg1, arg2})` -> `call(obj, &.{arg1, arg2})`,  
   `callKwargs(obj, .{arg1, arg2}, .{.kw1 = arg3})` -> `callKwargs(obj, &.{arg1, arg2}, .{.kw1 = arg3})`.
   * `parseArgs` unchanged, it still accepts tuple/struct of any Object compatible type.
+* `UnicodeObject.fromString` now returns UnicodeError.
+  * The error was undocumented.
+* `DictObject.setItemString`, `DictObject.getItemString`, and `DictObject.fromStruct` now returns UnicodeError.
+* `import` now returns UnicodeError.
+* Various errror set includes UnicodeError or AllocError
+  * `AllocError = error {PyAlloc}`.
 
 ### new stuffs
 * Add `Builtin.list`.
 * Add `DictObject.setItemString`.
 * Add `TupleObject.fromSlice`.
+* Add `getAttr`.
 
 ### changes
 * It is now compiled with 0.16.0, with 0.15.x compatibility maintained.

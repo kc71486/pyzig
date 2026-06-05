@@ -625,8 +625,8 @@ pub const UnicodeObject = extern struct {
     /// buffer str.
     ///
     /// Returns a new reference.
-    pub fn fromString(str: [*:0]const u8) *UnicodeObject {
-        // yes, this will not error
+    pub fn fromString(str: [*:0]const u8) UnicodeError!*UnicodeObject {
+        // the error is undocumented
         const c_object: *c.PyObject = c.PyUnicode_FromString(str).?;
         return UnicodeObject.fromObjectFast(.fromC(c_object));
     }
@@ -999,8 +999,8 @@ pub const DictObject = extern struct {
     }
 
     /// Insert value into the with utf-8 encoded key.
-    pub fn setItemString(self: *DictObject, key: [*:0]const u8, value: *Object) void {
-        const key_obj: *UnicodeObject = .fromString(key);
+    pub fn setItemString(self: *DictObject, key: [*:0]const u8, value: *Object) UnicodeError!void {
+        const key_obj: *UnicodeObject = try .fromString(key);
         defer decRef(key_obj.toObject());
         // c.PyDict_SetItem doesn't steal reference
         const result: i32 = c.PyDict_SetItem(self.toObject().toC(), key_obj.toObject().toC(), value.toC());
@@ -1022,17 +1022,17 @@ pub const DictObject = extern struct {
 
     /// Get item by utf-8 encoded key, doesn't increment reference count. Return null if not
     /// found. Return DictError if keys cannot hash or compare equal.
-    pub fn getItemString(self: *DictObject, key: [*:0]const u8) DictError!?*Object {
-        const key_obj: *UnicodeObject = .fromString(key);
+    pub fn getItemString(self: *DictObject, key: [*:0]const u8) (UnicodeError || DictError)!?*Object {
+        const key_obj: *UnicodeObject = try .fromString(key);
         defer decRef(key_obj.toObject());
         return try self.getItem(key_obj.toObject());
     }
 
-    pub fn fromStruct(_struct: anytype) MemoryError!*DictObject {
+    pub fn fromStruct(_struct: anytype) (MemoryError || UnicodeError)!*DictObject {
         const fields = @typeInfo(@TypeOf(_struct)).@"struct".fields;
         const dict_obj: *DictObject = try .new();
         inline for (fields) |field| {
-            const key: *UnicodeObject = .fromString(field.name);
+            const key: *UnicodeObject = try .fromString(field.name);
             defer decRef(key.toObject());
             const item = @field(_struct, field.name);
             dict_obj.setItem(key.toObject(), item.toObject()) catch unreachable;
@@ -1552,7 +1552,7 @@ pub fn parseKwargs(args_dict: *DictObject, comptime keys: []const []const u8, T:
     }
     var out_tuple: T = undefined;
     inline for (fields, keys) |field, key_str| {
-        const key: UnicodeObject = UnicodeObject.fromString(key_str);
+        const key: UnicodeObject = try .fromString(key_str);
         defer decRef(key.toObject());
         const item_opt: ?*Object = try args_dict.getItem(key.toObject());
         if (item_opt) |item_obj| {
@@ -1895,16 +1895,22 @@ pub fn wrapPyCFunctionDefault(inner_fn: anytype) PyCFunction {
 // Import / Call
 
 /// Returns a new reference.
-pub fn import(name: [*:0]const u8) ImportError!*Object {
-    const name_py: *UnicodeObject = .fromString(name);
+pub fn import(name: [*:0]const u8) (UnicodeError || ImportError)!*Object {
+    const name_py: *UnicodeObject = try .fromString(name);
     defer decRef(name_py.toObject());
     const c_module = c.PyImport_Import(name_py.toObject().toC()) orelse return ImportError.Import;
     return Object.fromC(c_module);
 }
 
 /// Returns a new reference.
-pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) AttributeError!*Object {
-    const attr_name_py: *UnicodeObject = .fromString(attr_name);
+pub fn getAttr(obj: *Object, attr: *Object) AttributeError!*Object {
+    const c_attr = c.PyObject_GetAttr(obj.toC(), attr.toC()) orelse return AttributeError.Attribute;
+    return Object.fromC(c_attr);
+}
+
+/// Returns a new reference.
+pub fn getAttrString(obj: *Object, attr_name: [*:0]const u8) (UnicodeError || AttributeError)!*Object {
+    const attr_name_py: *UnicodeObject = try .fromString(attr_name);
     defer decRef(attr_name_py.toObject());
     const c_attr = c.PyObject_GetAttr(obj.toC(), attr_name_py.toObject().toC()) orelse return AttributeError.Attribute;
     return Object.fromC(c_attr);
@@ -2086,7 +2092,7 @@ fn listFromStrArrayInner(str_array: anytype, outlist: *ListObject) ListConversio
     for (str_array, 0..) |item, idx| {
         const item_obj: *Object = blk: switch (@typeInfo(Gchild)) {
             .int => {
-                const _item: *UnicodeObject = .fromString(item);
+                const _item: *UnicodeObject = try .fromString(item);
                 break :blk _item.toObject();
             },
             .array, .pointer => {
@@ -2203,46 +2209,48 @@ fn assertmessageZ(comptime ok: bool, comptime messagez: [*:0]const u8) void {
 // ========================================================================= //
 // Zig error set
 
+/// Python malloc related error
+pub const AllocError = error{PyAlloc};
 /// Generic memory related error.
-pub const MemoryError = error{PyAlloc} || Allocator.Error;
+pub const MemoryError = AllocError || Allocator.Error;
 /// Python type casting error.
-pub const TypeError = error{ PyType, NullObject, SystemError };
+pub const TypeError = AllocError || error{ PyType, NullObject, SystemError };
 /// Python attribute related error
-pub const AttributeError = error{Attribute};
+pub const AttributeError = AllocError || error{Attribute};
 /// Any error that python call() returns
-pub const CallError = MemoryError || AttributeError || error{Call};
+pub const CallError = MemoryError || UnicodeError || AttributeError || error{Call};
 /// Python float/int related error.
-pub const NumericError = error{ Long, Float };
+pub const NumericError = AllocError || error{ Long, Float };
 /// Python str related error.
-pub const UnicodeError = error{Unicode};
+pub const UnicodeError = AllocError || error{Unicode};
 /// Python list related error.
-pub const ListError = error{List};
+pub const ListError = AllocError || error{List};
 /// Python tuple related error.
-pub const TupleError = error{Tuple};
+pub const TupleError = AllocError || error{Tuple};
 /// Python dict related error.
-pub const DictError = error{ Dict, KeyNotFound };
+pub const DictError = AllocError || error{ Dict, KeyNotFound };
 /// Python iterator related error.
-pub const IteratorError = error{Iter};
+pub const IteratorError = AllocError || error{Iter};
 /// Python index error.
-pub const IndexError = error{ ListIndex, TupleIndex, DictIndex };
+pub const IndexError = AllocError || error{ ListIndex, TupleIndex, DictIndex };
 /// Module creation related error.
-pub const ModuleError = TypeError || error{ ModuleDef, Module };
+pub const ModuleError = AllocError || TypeError || error{ ModuleDef, Module };
 /// Import related error.
-pub const ImportError = error{Import};
+pub const ImportError = AllocError || error{Import};
 /// Argument related error.
-pub const ArgsError = IndexError || TypeError || error{Argcount};
+pub const ArgsError = AllocError || IndexError || TypeError || error{Argcount};
 /// Argument related error.
-pub const KwargsError = DictError;
+pub const KwargsError = AllocError || DictError;
 /// No error, for function compatibility.
 pub const NoError = error{};
 /// Generic memory related error and Python type casting error.
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
-pub const ListConversionError = NumericError || UnicodeError || MemoryError || TypeError;
+pub const ListConversionError = MemoryError || NumericError || UnicodeError || TypeError;
 /// Builtin error.
-pub const BuiltinError = UnicodeError || MemoryError || TypeError || error{ Str, GetItem, Print };
+pub const BuiltinError = MemoryError || UnicodeError || TypeError || error{ Str, GetItem, Print };
 /// Interpreter error.
-pub const InterpreterError = error{Finalize};
+pub const InterpreterError = AllocError || error{Finalize};
 /// Custom error generated from Err.customError()
 pub const CustomError = error{Custom};
 
