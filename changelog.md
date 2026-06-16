@@ -17,10 +17,14 @@
 * Add `DictObject.setItemString`.
 * Add `TupleObject.fromSlice`.
 * Add `getAttr`.
+* Add `LongObject.toIntOrOverflow`.
+* Add `Version`.
 
 ### changes
 * It is now compiled with 0.16.0, with 0.15.x compatibility maintained.
 * `ListObject.fromSlice` now accepts const slice.
+* Changes the interpreted structure of `LongObject`.
+* Changes the underlying implementention of `LongObject.toInt` (only for python >= 3.12).
 
 ### bug fixes
 * Add various `defer` for cleanup.
@@ -34,6 +38,8 @@
   * `PyMemberDef` -> `MemberDef`
   * `PyMethodDef` -> `MethodDef`
   * `PyGetSetDef` -> `GetSetDef`
+* Change various error sets coverage.
+* `FloatObject.tof64` no longer returns error.
 
 ## 0.4.0
 

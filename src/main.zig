@@ -280,16 +280,32 @@ pub fn Py_None() *NoneObject {
     return None();
 }
 
-/// Integer object type, immutable, field ob_digit only means it takes at
-/// least 1 digit. It may take more if the number is greater than 2^30.
+/// Integer object type, immutable.
+///
+/// Note: The structure of lv_tag has changed in python 3.12.
 pub const LongObject = extern struct {
     ob_base: Object,
     long_value: _PyLongValue,
 
     pub const _PyLongValue = extern struct {
-        lv_tag: usize,
+        /// Number of digits, sign and flags
+        lv_tag: LvTag,
+        /// 30 bits per limb by default after python 3.11. Takes at least 1 digit.
         ob_digit: [1]u32,
     };
+    pub const LvTag = packed struct(usize) {
+        sign: Sign,
+        small_int: bool,
+        digit: Digit,
+
+        pub const Sign = enum(u2) {
+            positive = 0,
+            zero = 1,
+            negative = 2,
+        };
+        const Digit = if (@sizeOf(usize) == 8) u61 else u29;
+    };
+    pub const bits_per_limb: comptime_int = 30;
 
     comptime {
         comp_assert.equalLayout(LongObject, c.PyLongObject);
@@ -341,17 +357,29 @@ pub const LongObject = extern struct {
                             break :blk c.PyLong_FromUnsignedLongLong;
                     }
                 },
-                else => return NumericError.Long,
+                else => @compileError("LongObject.fromInt only supports up to 64 bits"),
             }
         };
-        const long: *c.PyObject = convert_fn(value) orelse return NumericError.Long;
+        const long: *c.PyObject = convert_fn(value) orelse return NumericError.IntOverflow;
         return fromObjectFast(.fromC(long));
     }
 
     /// Return the integer representation. Setup OverflowError and return
-    /// NumericError when failed. Note that the underlying function uses 64
-    /// bit, so the number that is too big will fail.
-    pub fn toInt(self: *LongObject, T: type) NumericError!T {
+    /// NumericError when failed.
+    pub fn toInt(self: *const LongObject, T: type) NumericError!T {
+        if (comptime version.order(Version.@"3.12") == .lt) {
+            return toIntLegacy(self, T);
+        }
+        const result: IntOrOverflow(T) = self.toIntOrOverflow(T);
+        switch (result) {
+            .intvalue => |value| return value,
+            .overflow, .underflow => {
+                return Err.overflow("Python int too large to convert");
+            },
+        }
+    }
+
+    fn toIntLegacy(self: *LongObject, T: type) NumericError!T {
         const int_info = @typeInfo(T).int;
         const convert_fn = blk: {
             if (int_info.signedness == .signed) {
@@ -375,12 +403,75 @@ pub const LongObject = extern struct {
             if (intvalue <= std.math.maxInt(T) and intvalue >= std.math.minInt(T)) {
                 return @intCast(intvalue);
             } else {
-                Err.setString(Err.Standard.OverflowError(), "");
-                return NumericError.Long;
+                return Err.overflow("Python int too large to convert");
             }
         } else {
             return intvalue;
         }
+    }
+
+    /// Return the integer representation.
+    pub fn toIntOrOverflow(self: *const LongObject, T: type) IntOrOverflow(T) {
+        if (comptime version.order(Version.@"3.12") == .lt) {
+            @compileError("not supported in python < 3.12");
+        }
+        const int_info = @typeInfo(T).int;
+        const sign: i2 = self.getSign();
+        if (comptime (int_info.bits <= 30 or
+            (int_info.bits == 31 and int_info.signedness == .signed)))
+        {
+            if (self.long_value.lv_tag.digit <= 1) { // single limb
+                const result: i31 = @as(i31, @intCast(self.long_value.ob_digit[0])) * getSign(self);
+                if (result < std.math.minInt(T)) {
+                    return .underflow;
+                } else if (result > std.math.maxInt(T)) {
+                    return .overflow;
+                } else {
+                    return .{ .intvalue = @intCast(result) };
+                }
+            } else {
+                return if (sign > 0) .overflow else .underflow;
+            }
+        } else {
+            if (comptime int_info.signedness == .unsigned) {
+                if (sign < 0) {
+                    return .underflow;
+                }
+            }
+            if (self.long_value.lv_tag.digit <= 1) {
+                const result: i31 = @as(i31, @intCast(self.long_value.ob_digit[0])) * getSign(self);
+                return .{ .intvalue = @intCast(result) };
+            } else {
+                var result: T = 0;
+                var idx: usize = self.long_value.lv_tag.digit;
+                while (idx > 0) {
+                    const newval: T, const overflow: u1 = @shlWithOverflow(result, 30);
+                    if (overflow != 0) {
+                        return if (sign > 0) .overflow else .underflow;
+                    } else {
+                        result = newval | self.long_value.ob_digit[idx - 1];
+                    }
+                    idx -= 1;
+                }
+                return .{ .intvalue = result * @as(T, @intCast(sign)) };
+            }
+        }
+    }
+
+    pub fn IntOrOverflow(T: type) type {
+        return union(enum) {
+            intvalue: T,
+            overflow: void,
+            underflow: void,
+        };
+    }
+
+    fn getSign(self: *const LongObject) i2 {
+        return switch (self.long_value.lv_tag.sign) {
+            .positive => 1,
+            .zero => 0,
+            .negative => -1,
+        };
     }
 };
 
@@ -508,17 +599,15 @@ pub const FloatObject = extern struct {
     }
 
     /// Returns a new reference.
-    pub fn fromf64(value: f64) NumericError!*FloatObject {
-        const float = c.PyFloat_FromDouble(value) orelse return NumericError.Float;
+    pub fn fromf64(value: f64) AllocError!*FloatObject {
+        // PyFloat_FromDouble will only fail if malloc fail
+        const float: *c.PyObject = c.PyFloat_FromDouble(value) orelse return AllocError.PyAlloc;
         return fromObjectFast(.fromC(float));
     }
 
-    pub fn tof64(self: *FloatObject) NumericError!f64 {
-        const floatvalue: f64 = c.PyFloat_AsDouble(self.toObject().toC());
-        if (floatvalue == -1 and Err.occurred() != null) {
-            return NumericError.Float;
-        }
-        return floatvalue;
+    pub fn tof64(self: *FloatObject) f64 {
+        // type safety guarentees this
+        return self.ob_fval;
     }
 };
 
@@ -684,12 +773,12 @@ pub const ListObject = extern struct {
     /// items are set to NULL.
     ///
     /// Returns a new reference.
-    pub fn new(len: usize) MemoryError!*ListObject {
+    pub fn new(len: usize) AllocError!*ListObject {
         if (len > std.math.maxInt(isize)) {
             Err.setString(Err.Standard.MemoryError(), "len exceed max isize");
-            return MemoryError.PyAlloc;
+            return AllocError.PyAlloc;
         }
-        const obj_c: *c.PyObject = c.PyList_New(@intCast(len)) orelse return MemoryError.PyAlloc;
+        const obj_c: *c.PyObject = c.PyList_New(@intCast(len)) orelse return AllocError.PyAlloc;
         return ListObject.fromObjectFast(.fromC(obj_c));
     }
 
@@ -740,7 +829,7 @@ pub const ListObject = extern struct {
     }
 
     /// Turns slice of object into ListObject.
-    pub fn fromSlice(slice: []const *Object) MemoryError!*ListObject {
+    pub fn fromSlice(slice: []const *Object) AllocError!*ListObject {
         const list_obj: *ListObject = try ListObject.new(slice.len);
         for (slice, 0..) |item, idx| {
             list_obj.setItem(@intCast(idx), item) catch unreachable;
@@ -749,7 +838,7 @@ pub const ListObject = extern struct {
     }
 
     /// Turns slice of pointer of type T into ListObject.
-    pub fn fromSliceT(T: type, slice: []const *T) MemoryError!*ListObject {
+    pub fn fromSliceT(T: type, slice: []const *T) AllocError!*ListObject {
         const list_obj: *ListObject = try ListObject.new(slice.len);
         for (slice, 0..) |item, idx| {
             list_obj.setItem(@intCast(idx), item.toObject()) catch unreachable;
@@ -1141,7 +1230,8 @@ pub const Builtin = struct {
         var stdout_buffer: [64]u8 = undefined;
         if (comptime builtin.zig_version.order(zig_0_16) != .lt) {
             var threaded: std.Io.Threaded = .init_single_threaded;
-            var stdout_writer: std.Io.File.Writer = std.Io.File.stdout().writer(threaded.io(), &stdout_buffer);
+            const io: std.Io = threaded.io();
+            var stdout_writer: std.Io.File.Writer = std.Io.File.stdout().writer(io, &stdout_buffer);
             var stdout: *std.Io.Writer = &stdout_writer.interface;
             stdout.print("{s}\n", .{str_}) catch return BuiltinError.Print;
             stdout.flush() catch return BuiltinError.Print;
@@ -1283,19 +1373,25 @@ pub const Err = struct {
     /// Set the error indicator and return Allocator.Error.
     pub fn outOfMemory() Allocator.Error {
         setString(Standard.MemoryError(), "Allocator Error");
-        return error.OutOfMemory;
+        return Allocator.Error.OutOfMemory;
+    }
+
+    /// Set the error indicator and return error.IntOverflow.
+    pub fn overflow(string: [*:0]const u8) NumericError {
+        setString(Standard.OverflowError(), string);
+        return NumericError.IntOverflow;
     }
 
     /// Set the error indicator and return error.NullObject.
     pub fn noneError(string: [*:0]const u8) TypeError {
         setString(Standard.TypeError(), string);
-        return error.NullObject;
+        return TypeError.NullObject;
     }
 
     /// Set the error indicator and return error.CustomError
     pub fn customError(string: [*:0]const u8) CustomError {
         setString(Standard.Exception(), string);
-        return error.Custom;
+        return CustomError.Custom;
     }
 };
 
@@ -2132,7 +2228,7 @@ fn ndarrayFromListAlloc(gpa: Allocator, list_obj: *ListObject, outslice: anytype
             for (0..size) |idx| {
                 const item_obj: *Object = list_obj.getItem(idx) catch unreachable;
                 const item_float: *FloatObject = try .fromObject(item_obj);
-                outslice[idx] = try item_float.tof64();
+                outslice[idx] = item_float.tof64();
             }
         },
         .pointer => {
@@ -2192,19 +2288,27 @@ pub fn default_isType(obj: *Object, type_obj: TypeObject) bool {
 }
 
 // ========================================================================= //
-// compile time stuff
+// Python version
 
-fn assertmessage(comptime ok: bool, comptime message: []const u8) void {
-    if (!ok) {
-        @compileLog("{s}", message);
-        unreachable;
-    }
-}
+pub const version: std.SemanticVersion = Version.compiled_against;
 
-fn assertmessageZ(comptime ok: bool, comptime messagez: [*:0]const u8) void {
-    const message: []const u8 = std.mem.span(messagez);
-    assertmessage(ok, message);
-}
+pub const Version = struct {
+    pub const compiled_against: std.SemanticVersion = .{
+        .major = c.PY_MAJOR_VERSION,
+        .minor = c.PY_MINOR_VERSION,
+        .patch = c.PY_MICRO_VERSION,
+    };
+    pub const @"3.12": std.SemanticVersion = .{
+        .major = 3,
+        .minor = 12,
+        .patch = 0,
+    };
+    pub const @"3.13": std.SemanticVersion = .{
+        .major = 3,
+        .minor = 13,
+        .patch = 0,
+    };
+};
 
 // ========================================================================= //
 // Zig error set
@@ -2214,13 +2318,13 @@ pub const AllocError = error{PyAlloc};
 /// Generic memory related error.
 pub const MemoryError = AllocError || Allocator.Error;
 /// Python type casting error.
-pub const TypeError = AllocError || error{ PyType, NullObject, SystemError };
+pub const TypeError = error{ PyType, NullObject, SystemError };
 /// Python attribute related error
 pub const AttributeError = AllocError || error{Attribute};
 /// Any error that python call() returns
 pub const CallError = MemoryError || UnicodeError || AttributeError || error{Call};
-/// Python float/int related error.
-pub const NumericError = AllocError || error{ Long, Float };
+/// Python numeric related error.
+pub const NumericError = AllocError || error{IntOverflow};
 /// Python str related error.
 pub const UnicodeError = AllocError || error{Unicode};
 /// Python list related error.
@@ -2232,7 +2336,7 @@ pub const DictError = AllocError || error{ Dict, KeyNotFound };
 /// Python iterator related error.
 pub const IteratorError = AllocError || error{Iter};
 /// Python index error.
-pub const IndexError = AllocError || error{ ListIndex, TupleIndex, DictIndex };
+pub const IndexError = error{ ListIndex, TupleIndex, DictIndex };
 /// Module creation related error.
 pub const ModuleError = AllocError || TypeError || error{ ModuleDef, Module };
 /// Import related error.
@@ -2241,8 +2345,6 @@ pub const ImportError = AllocError || error{Import};
 pub const ArgsError = AllocError || IndexError || TypeError || error{Argcount};
 /// Argument related error.
 pub const KwargsError = AllocError || DictError;
-/// No error, for function compatibility.
-pub const NoError = error{};
 /// Generic memory related error and Python type casting error.
 pub const MemoryTypeError = MemoryError || TypeError;
 /// List conversion related error.
