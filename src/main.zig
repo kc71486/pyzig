@@ -370,6 +370,10 @@ pub const LongObject = extern struct {
         if (comptime version.order(Version.@"3.12") == .lt) {
             return toIntLegacy(self, T);
         }
+        if (comptime version.order(Version.@"3.15") == .gt) {
+            // version >= 3.15 unchecked
+            return toIntLegacy(self, T);
+        }
         const result: IntOrOverflow(T) = self.toIntOrOverflow(T);
         switch (result) {
             .intvalue => |value| return value,
@@ -414,6 +418,10 @@ pub const LongObject = extern struct {
     pub fn toIntOrOverflow(self: *const LongObject, T: type) IntOrOverflow(T) {
         if (comptime version.order(Version.@"3.12") == .lt) {
             @compileError("not supported in python < 3.12");
+        }
+        if (comptime version.order(Version.@"3.15") == .gt) {
+            // version >= 3.15 unchecked
+            @compileError("not supported in python >= 3.15");
         }
         const int_info = @typeInfo(T).int;
         const sign: i2 = self.getSign();
@@ -1376,19 +1384,19 @@ pub const Err = struct {
         return Allocator.Error.OutOfMemory;
     }
 
-    /// Set the error indicator and return error.IntOverflow.
+    /// Set the error indicator and return NumericError.IntOverflow.
     pub fn overflow(string: [*:0]const u8) NumericError {
         setString(Standard.OverflowError(), string);
         return NumericError.IntOverflow;
     }
 
-    /// Set the error indicator and return error.NullObject.
+    /// Set the error indicator and return TypeError.NullObject.
     pub fn noneError(string: [*:0]const u8) TypeError {
         setString(Standard.TypeError(), string);
         return TypeError.NullObject;
     }
 
-    /// Set the error indicator and return error.CustomError
+    /// Set the error indicator and return CustomError
     pub fn customError(string: [*:0]const u8) CustomError {
         setString(Standard.Exception(), string);
         return CustomError.Custom;
@@ -2135,7 +2143,8 @@ pub const Interpreter = struct {
 
 /// Returns a new reference.
 pub fn listFromNdarray(ndarray: anytype) ListConversionError!*ListObject {
-    const list_obj = try ListObject.new(ndarray.len);
+    const list_obj: *ListObject = try ListObject.new(ndarray.len);
+    errdefer decRef(list_obj.toObject());
     try listFromNdarrayInner(ndarray, list_obj);
     return list_obj;
 }
@@ -2158,6 +2167,7 @@ fn listFromNdarrayInner(ndarray: anytype, outlist: *ListObject) ListConversionEr
             },
             .array, .pointer => {
                 const _list: *ListObject = try .new(item.len);
+                errdefer decRef(_list.toObject());
                 try listFromNdarrayInner(item, _list);
                 break :blk _list.toObject();
             },
@@ -2306,6 +2316,16 @@ pub const Version = struct {
     pub const @"3.13": std.SemanticVersion = .{
         .major = 3,
         .minor = 13,
+        .patch = 0,
+    };
+    pub const @"3.14": std.SemanticVersion = .{
+        .major = 3,
+        .minor = 14,
+        .patch = 0,
+    };
+    pub const @"3.15": std.SemanticVersion = .{
+        .major = 3,
+        .minor = 15,
         .patch = 0,
     };
 };
